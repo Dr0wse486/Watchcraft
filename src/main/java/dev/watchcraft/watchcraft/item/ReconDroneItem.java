@@ -1,0 +1,86 @@
+package dev.watchcraft.watchcraft.item;
+
+import dev.watchcraft.watchcraft.entity.ReconDroneEntity;
+import dev.watchcraft.watchcraft.registry.ModEntities;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
+
+public class ReconDroneItem extends Item {
+
+    public ReconDroneItem(Properties properties) {
+        super(properties);
+    }
+
+    /** Right click a block: deploy the drone hovering in front of that face. */
+    @Override
+    public InteractionResult useOn(UseOnContext context) {
+        Level level = context.getLevel();
+        Player player = context.getPlayer();
+        if (player == null) {
+            return InteractionResult.PASS;
+        }
+
+        BlockPos target = context.getClickedPos().relative(context.getClickedFace());
+        if (!level.getBlockState(target).getCollisionShape(level, target).isEmpty()) {
+            return InteractionResult.FAIL;
+        }
+
+        if (!level.isClientSide) {
+            if (ReconDroneEntity.hasDeployed(player)) {
+                player.displayClientMessage(
+                        net.minecraft.network.chat.Component.translatable("message.watchcraft.limit"), true);
+                return InteractionResult.FAIL;
+            }
+            ReconDroneEntity drone = ModEntities.RECON_DRONE.get().create(level);
+            if (drone == null) {
+                return InteractionResult.FAIL;
+            }
+            Vec3 spawn = Vec3.atCenterOf(target);
+            drone.moveTo(spawn.x, spawn.y, spawn.z, player.getYRot(), 0.0F);
+            drone.setOwner(player);
+            // Whatever was fitted at the bench flies with it.
+            drone.setModules(DroneModules.of(context.getItemInHand()));
+            drone.setDeltaMovement(Vec3.ZERO);
+            level.addFreshEntity(drone);
+            level.playSound(null, spawn.x, spawn.y, spawn.z, SoundEvents.ARMOR_STAND_PLACE,
+                    SoundSource.PLAYERS, 0.7F, 1.6F);
+            if (!player.getAbilities().instabuild) {
+                context.getItemInHand().shrink(1);
+            }
+        }
+        return InteractionResult.sidedSuccess(level.isClientSide);
+    }
+
+    /** Right click air: throw the drone forward so it scouts on the way. */
+    @Override
+    public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
+        ItemStack stack = player.getItemInHand(hand);
+        if (!level.isClientSide) {
+            if (ReconDroneEntity.hasDeployed(player)) {
+                player.displayClientMessage(
+                        net.minecraft.network.chat.Component.translatable("message.watchcraft.limit"), true);
+                return InteractionResultHolder.fail(stack);
+            }
+            ReconDroneEntity.throwFrom(level, player, stack);
+            level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SNOWBALL_THROW,
+                    SoundSource.PLAYERS, 0.6F, 1.4F);
+        }
+        return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
+    }
+
+    @Override
+    public boolean isFoil(net.minecraft.world.item.ItemStack stack) {
+        return true;
+    }
+}

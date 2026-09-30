@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "P P",
+    " C ",
+    "P P"
+  ],
+  "key": {
+    "P": {
+      "item": "watchcraft:drone_propeller"
+    },
+    "C": {
+      "item": "watchcraft:drone_chassis"
+    }
+  },
+  "result": {
+    "id": "watchcraft:recon_drone",
+    "count": 1
+  }
+}

@@ -1,0 +1,29 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="Dr0wse486"
+description='''
+Adds a scout drone you can deploy, pilot remotely and throw to mark creatures.
+Right click to deploy, press V to link in / out, press G to throw one, R to recall.
+Fit modules at the Module Workbench to add a charge attack.
+'''
+logoFile="watchcraft.png"
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[21.1,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"

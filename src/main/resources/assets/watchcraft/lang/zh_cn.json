@@ -1,0 +1,50 @@
+{
+  "itemGroup.watchcraft": "侦查无人机",
+  "block.watchcraft.module_workbench": "模块装载工作台",
+  "container.watchcraft.module_workbench": "模块装载工作台",
+  "item.watchcraft.module_workbench": "模块装载工作台",
+  "item.watchcraft.drone_chassis": "无人机机体",
+  "item.watchcraft.drone_propeller": "无人机旋桨",
+  "item.watchcraft.recon_drone": "侦查无人机",
+  "item.watchcraft.customization_module": "无人机客制化模块",
+  "item.watchcraft.attack_module": "攻击模块",
+  "entity.watchcraft.recon_drone": "侦查无人机",
+
+  "item.watchcraft.customization_module.desc": "装载后解锁无人机的改装接口",
+  "item.watchcraft.attack_module.desc": "装载后可在操控时冲刺自爆，造成 20 点爆炸伤害",
+  "tooltip.watchcraft.requires_customization": "需先装载无人机客制化模块",
+
+  "key.categories.watchcraft": "侦查无人机",
+  "key.watchcraft.link": "接入 / 断开无人机",
+  "key.watchcraft.throw": "快速投出无人机",
+  "key.watchcraft.recall": "回收无人机",
+
+  "message.watchcraft.no_drone": "附近没有属于你的空闲无人机",
+  "message.watchcraft.busy": "该无人机正在被其他玩家操控",
+  "message.watchcraft.no_item": "背包里没有可投出的无人机",
+  "message.watchcraft.limit": "你已经有无人机在外面了",
+  "message.watchcraft.recalled": "无人机已回收",
+  "message.watchcraft.nothing_to_recall": "没有可回收的无人机",
+  "message.watchcraft.linked": "无人机链路已接入",
+  "message.watchcraft.unlinked": "无人机链路已断开",
+  "message.watchcraft.destroyed": "你的无人机已被摧毁",
+  "message.watchcraft.charge_destroyed": "无人机已冲刺自毁",
+
+  "hud.watchcraft.axis_x": "X轴",
+  "hud.watchcraft.axis_y": "Y轴",
+  "hud.watchcraft.range": "距离",
+  "hud.watchcraft.health": "机体",
+  "hud.watchcraft.signal_lost": "信号丢失",
+
+  "hud.watchcraft.move": "飞行",
+  "hud.watchcraft.altitude": "升降",
+  "hud.watchcraft.look": "鼠标",
+  "hud.watchcraft.aim": "方向",
+  "hud.watchcraft.disconnect": "断开",
+  "hud.watchcraft.throw": "投掷",
+  "hud.watchcraft.recall": "回收",
+  "hud.watchcraft.charge": "冲刺攻击",
+
+  "command.watchcraft.doorinteract.enabled": "无人机开门：已开启（可开启门 / 活板门 / 栅栏门）",
+  "command.watchcraft.doorinteract.disabled": "无人机开门：已关闭"
+}

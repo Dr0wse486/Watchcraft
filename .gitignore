@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------- build output
+build/
+.gradle/
+run/
+runs/
+
+# ------------------------------------------------------------------- local toolchain
+# A JDK and a Gradle distribution downloaded for this machine only. Nobody cloning the
+# repo needs them: the Gradle wrapper fetches its own distribution, and the toolchain
+# resolver picks up a JDK 21 from the machine or downloads one. See README.
+.tools/
+
+# ----------------------------------------------------------- local delivery staging
+# Where the built jar is copied before being dropped into a mods folder. Release builds
+# belong on the GitHub Releases page, not in the tree.
+outputs/
+
+# ---------------------------------------------------------------- editors and OS
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+*.log
+*.tmp
+Thumbs.db
+.DS_Store
+
+# ------------------------------------------------------------- assistant workspace
+.workbuddy-ai/

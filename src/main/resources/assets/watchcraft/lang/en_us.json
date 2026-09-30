@@ -1,0 +1,50 @@
+{
+  "itemGroup.watchcraft": "Recon Drone",
+  "block.watchcraft.module_workbench": "Module Workbench",
+  "container.watchcraft.module_workbench": "Module Workbench",
+  "item.watchcraft.module_workbench": "Module Workbench",
+  "item.watchcraft.drone_chassis": "Drone Chassis",
+  "item.watchcraft.drone_propeller": "Drone Propeller",
+  "item.watchcraft.recon_drone": "Recon Drone",
+  "item.watchcraft.customization_module": "Drone Customization Module",
+  "item.watchcraft.attack_module": "Attack Module",
+  "entity.watchcraft.recon_drone": "Recon Drone",
+
+  "item.watchcraft.customization_module.desc": "Unlocks the drone's module bay",
+  "item.watchcraft.attack_module.desc": "Adds a charge attack: 20 points of explosive damage, once",
+  "tooltip.watchcraft.requires_customization": "Requires a Drone Customization Module",
+
+  "key.categories.watchcraft": "Recon Drone",
+  "key.watchcraft.link": "Link / unlink drone",
+  "key.watchcraft.throw": "Throw drone",
+  "key.watchcraft.recall": "Recall drone",
+
+  "message.watchcraft.no_drone": "No idle drone of yours is within range",
+  "message.watchcraft.busy": "That drone is already being piloted",
+  "message.watchcraft.no_item": "You have no drone to throw",
+  "message.watchcraft.limit": "You already have a drone out",
+  "message.watchcraft.recalled": "Drone recalled",
+  "message.watchcraft.nothing_to_recall": "You have no drone to recall",
+  "message.watchcraft.linked": "Drone link established",
+  "message.watchcraft.unlinked": "Drone link closed",
+  "message.watchcraft.destroyed": "Your drone was destroyed",
+  "message.watchcraft.charge_destroyed": "Your drone went down in a charge attack",
+
+  "hud.watchcraft.axis_x": "X",
+  "hud.watchcraft.axis_y": "Y",
+  "hud.watchcraft.range": "DIST",
+  "hud.watchcraft.health": "HULL",
+  "hud.watchcraft.signal_lost": "SIGNAL LOST",
+
+  "hud.watchcraft.move": "fly",
+  "hud.watchcraft.altitude": "up / down",
+  "hud.watchcraft.look": "mouse",
+  "hud.watchcraft.aim": "aim",
+  "hud.watchcraft.disconnect": "unlink",
+  "hud.watchcraft.throw": "throw",
+  "hud.watchcraft.recall": "recall",
+  "hud.watchcraft.charge": "charge",
+
+  "command.watchcraft.doorinteract.enabled": "Drone door interaction: enabled (doors, trapdoors and fence gates)",
+  "command.watchcraft.doorinteract.disabled": "Drone door interaction: disabled"
+}

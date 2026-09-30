@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "watchcraft:block/module_workbench"
+    }
+  }
+}
