@@ -60,6 +60,26 @@
                 { "name": "BlurDir", "values": [ 0.0, 1.0 ] },
                 { "name": "RadiusMultiplier", "values": [ 0.25 ] }
             ]
+        },
+        {
+            "name": "watchcraft:radial_blur",
+            "intarget": "minecraft:main",
+            "outtarget": "swap",
+            "use_linear_filter": true,
+            "uniforms": [
+                { "name": "Center", "values": [ 0.5, 0.5 ] },
+                { "name": "Strength", "values": [ 0.0 ] }
+            ]
+        },
+        {
+            "name": "watchcraft:radial_blur",
+            "intarget": "swap",
+            "outtarget": "minecraft:main",
+            "use_linear_filter": true,
+            "uniforms": [
+                { "name": "Center", "values": [ 0.5, 0.5 ] },
+                { "name": "Strength2", "values": [ 0.0 ] }
+            ]
         }
     ]
 }

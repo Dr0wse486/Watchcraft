@@ -30,6 +30,22 @@ public final class KeyMappings {
             GLFW.GLFW_KEY_R,
             CATEGORY);
 
+    /** One press = one barrell roll. Only meaningful while piloting. */
+    public static final KeyMapping ROLL = new KeyMapping(
+            "key.watchcraft.roll",
+            KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_C,
+            CATEGORY);
+
+    /** Blows the warhead where the drone is standing. Only meaningful while piloting. */
+    public static final KeyMapping DETONATE = new KeyMapping(
+            "key.watchcraft.detonate",
+            KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_X,
+            CATEGORY);
+
     private KeyMappings() {
     }
 }

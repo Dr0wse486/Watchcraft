@@ -9,6 +9,8 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
@@ -24,6 +26,36 @@ public final class WatchcraftClient {
         modBus.addListener(WatchcraftClient::registerKeys);
         modBus.addListener(WatchcraftClient::registerScreens);
         modBus.addListener(WatchcraftClient::registerPayloads);
+        modBus.addListener(WatchcraftClient::onConfigLoading);
+        modBus.addListener(WatchcraftClient::onConfigReloading);
+    }
+
+    private static void onConfigLoading(ModConfigEvent.Loading event) {
+        applyConfig(event);
+    }
+
+    private static void onConfigReloading(ModConfigEvent.Reloading event) {
+        applyConfig(event);
+    }
+
+    /**
+     * 客户端配置载入/热重载之后，把手感与画面参数写回各自的静态镜像。
+     *
+     * <p>放在这里而不是主类里，是因为 {@link DroneController} 与 {@link DroneSignal} 都是纯客户端类，
+     * 双端共用的 {@code Watchcraft} 引用它们会在专用服务器上炸掉。
+     *
+     * <p>只认 CLIENT 那一份：COMMON 由 {@code Watchcraft} 处理。原因见那边的注释 ——
+     * {@code ConfigTracker} 派发事件的顺序不保证 COMMON 先到，而在这里读未载入的 COMMON
+     * 配置会抛异常并把模组加载整个带崩。
+     */
+    private static void applyConfig(ModConfigEvent event) {
+        ModConfig config = event.getConfig();
+        if (!Watchcraft.MOD_ID.equals(config.getModId()) || config.getType() != ModConfig.Type.CLIENT) {
+            return;
+        }
+        DroneController.applyConfig();
+        DroneSignal.applyConfig();
+        DroneShake.applyConfig();
     }
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
@@ -47,6 +79,8 @@ public final class WatchcraftClient {
         event.register(KeyMappings.LINK);
         event.register(KeyMappings.THROW);
         event.register(KeyMappings.RECALL);
+        event.register(KeyMappings.ROLL);
+        event.register(KeyMappings.DETONATE);
     }
 
     private static void registerScreens(RegisterMenuScreensEvent event) {

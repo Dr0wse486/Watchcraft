@@ -1,0 +1,30 @@
+{
+  "parent": "minecraft:adventure/root",
+  "display": {
+    "icon": {
+      "id": "watchcraft:recon_drone"
+    },
+    "title": {
+      "translate": "advancements.watchcraft.recon_drone.title"
+    },
+    "description": {
+      "translate": "advancements.watchcraft.recon_drone.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "has_drone": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": "watchcraft:recon_drone"
+          }
+        ]
+      }
+    }
+  }
+}

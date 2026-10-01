@@ -7,7 +7,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
-/** Client -> server: "link in", "link out", "throw a drone", "recall", "interact" or "attack run". */
+/** Client -> server: "link in", "link out", "throw a drone", "recall", "interact", "attack run" or "detonate". */
 public record DroneActionPayload(int action, int droneId) implements CustomPacketPayload {
 
     public static final int ACTION_ENTER = 0;
@@ -17,6 +17,8 @@ public record DroneActionPayload(int action, int droneId) implements CustomPacke
     public static final int ACTION_INTERACT = 4;
     /** Commit the drone to a straight attack run. Only accepted from a drone fitted with a warhead. */
     public static final int ACTION_CHARGE = 5;
+    /** Blow the warhead on the spot, without a run. Same module gate as {@link #ACTION_CHARGE}. */
+    public static final int ACTION_DETONATE = 6;
 
     public static final CustomPacketPayload.Type<DroneActionPayload> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(Watchcraft.MOD_ID, "drone_action"));

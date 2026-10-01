@@ -10,20 +10,29 @@
   "item.watchcraft.attack_module": "攻击模块",
   "entity.watchcraft.recon_drone": "侦查无人机",
 
+  "item.watchcraft.recon_drone.desc": "投放后可接入操控的侦察无人机，能标记视野内的生物",
   "item.watchcraft.customization_module.desc": "装载后解锁无人机的改装接口",
-  "item.watchcraft.attack_module.desc": "装载后可在操控时冲刺自爆，造成 20 点爆炸伤害",
+  "item.watchcraft.attack_module.desc": "装载后无人机可冲刺撞击自爆，也可按键引爆，半径 3 格内造成 125 点爆炸伤害",
   "tooltip.watchcraft.requires_customization": "需先装载无人机客制化模块",
+  "tooltip.watchcraft.installed": "已安装模块：",
+  "tooltip.watchcraft.no_modules": "未安装任何模块",
+
+  "advancements.watchcraft.recon_drone.title": "直到永远...超越无限",
+  "advancements.watchcraft.recon_drone.description": "获得一架侦查无人机",
 
   "key.categories.watchcraft": "侦查无人机",
   "key.watchcraft.link": "接入 / 断开无人机",
   "key.watchcraft.throw": "快速投出无人机",
   "key.watchcraft.recall": "回收无人机",
+  "key.watchcraft.roll": "滚筒（按住持续旋转）",
+  "key.watchcraft.detonate": "引爆无人机",
 
   "message.watchcraft.no_drone": "附近没有属于你的空闲无人机",
   "message.watchcraft.busy": "该无人机正在被其他玩家操控",
   "message.watchcraft.no_item": "背包里没有可投出的无人机",
   "message.watchcraft.limit": "你已经有无人机在外面了",
   "message.watchcraft.recalled": "无人机已回收",
+  "message.watchcraft.recalled_dimension": "你换了维度，无人机已自动收回",
   "message.watchcraft.nothing_to_recall": "没有可回收的无人机",
   "message.watchcraft.linked": "无人机链路已接入",
   "message.watchcraft.unlinked": "无人机链路已断开",
@@ -38,13 +47,19 @@
 
   "hud.watchcraft.move": "飞行",
   "hud.watchcraft.altitude": "升降",
+  "hud.watchcraft.roll": "滚筒",
   "hud.watchcraft.look": "鼠标",
   "hud.watchcraft.aim": "方向",
   "hud.watchcraft.disconnect": "断开",
   "hud.watchcraft.throw": "投掷",
   "hud.watchcraft.recall": "回收",
   "hud.watchcraft.charge": "冲刺攻击",
+  "hud.watchcraft.detonate": "引爆自爆",
+
+  "subtitles.watchcraft.tinnitus": "耳鸣",
 
   "command.watchcraft.doorinteract.enabled": "无人机开门：已开启（可开启门 / 活板门 / 栅栏门）",
-  "command.watchcraft.doorinteract.disabled": "无人机开门：已关闭"
+  "command.watchcraft.doorinteract.disabled": "无人机开门：已关闭",
+  "command.watchcraft.shake.enabled": "引爆镜头摇晃：已开启",
+  "command.watchcraft.shake.disabled": "引爆镜头摇晃：已关闭"
 }
