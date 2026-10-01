@@ -1,16 +1,59 @@
-# Watchcraft — Recon Drone
+# Watchcraft
 
 ![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1-62b47a?style=flat-square)
 ![NeoForge](https://img.shields.io/badge/NeoForge-21.1.251-e8a33d?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-4b8bbe?style=flat-square)
 
-A scout drone for **Minecraft 1.21.1 + NeoForge**. Deploy it, link into it from anywhere,
-fly it like you fly yourself, and every creature that wanders into its view gets lit up so
-you can mark it. Throw one with a single key to scout ahead without ever leaving your body.
+**Surveillance tools for Minecraft 1.21.1 + NeoForge.**
+
+Watchcraft is about seeing places you are not. It gives you eyes you can leave behind: gear that
+watches a room, a road or a player's back while you are somewhere else entirely, and that tells
+you what it saw without asking you to stand there and look.
+
+The first tool is a **recon drone** — deploy it, link into it from anywhere, fly it like you fly
+yourself, and every creature that wanders into its view gets lit up so you can mark it. Throw one
+with a single key to scout ahead without ever leaving your body.
+
+It is not meant to stay the only one. **Pinhole cameras and other instruments are on the way**, and
+the drone is built to be the reference the rest of them follow rather than a one off.
 
 ![The drone, four views](docs/drone-preview.png)
 
-## Controls
+## Tools
+
+| Tool | Status | What it gives you |
+| --- | --- | --- |
+| **Recon drone** | Shipping | A flyable camera on a 64 block leash. Deploy it, link in from anywhere, and everything it looks at gets outlined. Takes modules, up to and including a warhead. |
+| **Pinhole camera** | Planned | A camera mounted on a wall and tuned into rather than flown. No flight and no leash — just one fixed view of a room, from a spot nobody thinks to check. |
+| **Viewing terminal** | Idea | A block that shows the feed of any instrument you have linked. Somewhere to actually watch from. |
+| **Motion sensor** | Idea | A tripwire with a cone. Reports movement across its whole field instead of lighting up a single block. |
+| **Tracker tag** | Idea | A dart that sticks to a creature and keeps reporting where it went. Marking, but permanent. |
+
+Status is intent, not a schedule. Shipping means it is in the jar today; planned means it is the
+next thing up; idea means it is being kicked around and may change shape or never happen.
+
+## What ties them together
+
+Every instrument is meant to plug into the same handful of systems, so that adding one feels like
+adding a part rather than adding a mod:
+
+- **The leash and the signal model.** Distance degrades the feed and past the leash you lose it.
+  Already built for the drone, and the shape every remote instrument reuses.
+- **The visor.** One HUD, one reticle, one key strip, drawn *under* the signal overlay so the
+  instruments stay readable when the picture does not.
+- **The Module Workbench.** One bench, one loadout mask carried on the item stack, one
+  prerequisite rule. New instruments bring new boards.
+- **Server authority.** Clients send intent and nothing else. Ownership checks, packet rate caps
+  and collision sweeps all happen on the server.
+- **Generated assets.** Every mesh, texture and shader comes out of `tools/`. A new instrument is
+  a new generator, not a new binary blob.
+
+## The recon drone
+
+The rest of this README is the drone — the reference implementation, and the only instrument
+shipped so far.
+
+### Controls
 
 | Key | Action |
 | --- | --- |
@@ -28,7 +71,7 @@ you can mark it. Throw one with a single key to scout ahead without ever leaving
 All three mod keys are rebindable under *Options → Controls → Recon Drone*. The charge uses
 vanilla's own sprint binding, and the visor spells it out.
 
-## Commands
+### Commands
 
 | Command | Effect |
 | --- | --- |
@@ -38,7 +81,7 @@ vanilla's own sprint binding, and the visor spells it out.
 
 The setting is stored with the world, so it survives a restart.
 
-## How it behaves
+### How it behaves
 
 - **One drone at a time.** You can only ever have a single drone out in the world, and only
   that drone can be piloted. Trying to deploy or throw a second one just prints a message.
@@ -150,7 +193,7 @@ The setting is stored with the world, so it survives a restart.
   onto the run's cone — but the position in it is discarded and the leash check is skipped, since a
   committed one way run covers far more ground than the link reaches.
 
-## Modules
+### Modules
 
 A drone is a bare airframe until it is fitted out. Modules are seated at the **Module Workbench**:
 put a drone in the left well, a board in the middle one, and the finished drone appears in the
@@ -171,7 +214,7 @@ save and reload — the drone comes back with the same boards in it. That is why
 the item stack rather than on the entity: every one of those transitions builds a brand new
 `ItemStack`, and anything kept only on the entity would be gone at the first one.
 
-### Charge attack
+#### Charge attack
 
 With an Attack Module fitted, press the sprint key while piloting. The drone spools up and commits
 to a **straight run along whatever the crosshair was pointing at** — no pitch floor, so a level aim
@@ -228,7 +271,7 @@ There used to be a second trigger — a double tap of forward — and it is gone
 a stoop, forward is the axis the pilot is about to lock, and putting a destructive action on the same
 key that flies the drone was a bad idea.
 
-## Crafting
+### Crafting
 
 The drone is assembled from two parts, and each part is crafted on its own first.
 
