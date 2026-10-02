@@ -10,20 +10,29 @@
   "item.watchcraft.attack_module": "Attack Module",
   "entity.watchcraft.recon_drone": "Recon Drone",
 
+  "item.watchcraft.recon_drone.desc": "A recon drone you can deploy and pilot remotely; marks creatures in view",
   "item.watchcraft.customization_module.desc": "Unlocks the drone's module bay",
-  "item.watchcraft.attack_module.desc": "Adds a charge attack: 20 points of explosive damage, once",
+  "item.watchcraft.attack_module.desc": "Lets the drone dive into a target or be blown by key, 125 damage within 3 blocks",
   "tooltip.watchcraft.requires_customization": "Requires a Drone Customization Module",
+  "tooltip.watchcraft.installed": "Fitted modules:",
+  "tooltip.watchcraft.no_modules": "No modules fitted",
+
+  "advancements.watchcraft.recon_drone.title": "To Infinity... and Beyond",
+  "advancements.watchcraft.recon_drone.description": "Obtain a recon drone",
 
   "key.categories.watchcraft": "Recon Drone",
   "key.watchcraft.link": "Link / unlink drone",
   "key.watchcraft.throw": "Throw drone",
   "key.watchcraft.recall": "Recall drone",
+  "key.watchcraft.roll": "Roller (hold to spin)",
+  "key.watchcraft.detonate": "Detonate drone",
 
   "message.watchcraft.no_drone": "No idle drone of yours is within range",
   "message.watchcraft.busy": "That drone is already being piloted",
   "message.watchcraft.no_item": "You have no drone to throw",
   "message.watchcraft.limit": "You already have a drone out",
   "message.watchcraft.recalled": "Drone recalled",
+  "message.watchcraft.recalled_dimension": "You changed dimension - your drone was recalled automatically",
   "message.watchcraft.nothing_to_recall": "You have no drone to recall",
   "message.watchcraft.linked": "Drone link established",
   "message.watchcraft.unlinked": "Drone link closed",
@@ -38,13 +47,19 @@
 
   "hud.watchcraft.move": "fly",
   "hud.watchcraft.altitude": "up / down",
+  "hud.watchcraft.roll": "roller",
   "hud.watchcraft.look": "mouse",
   "hud.watchcraft.aim": "aim",
   "hud.watchcraft.disconnect": "unlink",
   "hud.watchcraft.throw": "throw",
   "hud.watchcraft.recall": "recall",
   "hud.watchcraft.charge": "charge",
+  "hud.watchcraft.detonate": "detonate",
+
+  "subtitles.watchcraft.tinnitus": "Tinnitus",
 
   "command.watchcraft.doorinteract.enabled": "Drone door interaction: enabled (doors, trapdoors and fence gates)",
-  "command.watchcraft.doorinteract.disabled": "Drone door interaction: disabled"
+  "command.watchcraft.doorinteract.disabled": "Drone door interaction: disabled",
+  "command.watchcraft.shake.enabled": "Detonation camera shake: enabled",
+  "command.watchcraft.shake.disabled": "Detonation camera shake: disabled"
 }

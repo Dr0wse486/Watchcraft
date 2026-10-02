@@ -1,0 +1,8 @@
+{
+  "tinnitus": {
+    "subtitle": "subtitles.watchcraft.tinnitus",
+    "sounds": [
+      { "name": "watchcraft:tinnitus", "stream": false }
+    ]
+  }
+}

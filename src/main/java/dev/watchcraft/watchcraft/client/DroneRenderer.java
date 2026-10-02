@@ -29,8 +29,12 @@ public class DroneRenderer extends EntityRenderer<ReconDroneEntity> {
     private static final float MODEL_Y = 0.225F;
 
     /**
-     * Which way the airframe leans into a turn. Roll is applied about the model's longitudinal
-     * axis. If the drone visibly banks out of its turns instead of into them, flip this.
+     * Which way the airframe leans into a turn, and which way it rolls. Roll is applied about the
+     * model's longitudinal axis, and a positive rotation about that axis lifts its right side, so a
+     * roll to the right - a turn lean, or a barrel roll - is a negative angle here. Note that this
+     * is the opposite of the sign the pilot's camera wants: see
+     * {@code DroneController.CAMERA_ROLL_SIGN}. If the drone visibly banks out of its turns instead
+     * of into them, flip this.
      */
     private static final float BANK_SIGN = -1.0F;
 
@@ -68,7 +72,10 @@ public class DroneRenderer extends EntityRenderer<ReconDroneEntity> {
         poseStack.mulPose(Axis.YP.rotationDegrees(180.0F - yaw));
         // xRot is positive nose-down, and rotating +Z towards +Y lifts the nose, so it is negated.
         poseStack.mulPose(Axis.XP.rotationDegrees(-pitch));
-        poseStack.mulPose(Axis.ZP.rotationDegrees(BANK_SIGN * entity.getBank(partialTick)));
+        // Lean and barrel roll are rotations about the same axis - the model's own nose, which the
+        // mesh points down -Z - so they share one sign constant and cannot fight each other.
+        poseStack.mulPose(Axis.ZP.rotationDegrees(
+                BANK_SIGN * (entity.getBank(partialTick) + entity.getRoll(partialTick))));
 
         int overlay = entity.getHurtTime() > 0 ? HURT_OVERLAY : OverlayTexture.NO_OVERLAY;
         var rig = DroneRig.of(entity, partialTick);

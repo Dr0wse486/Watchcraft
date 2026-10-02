@@ -43,7 +43,9 @@ public final class DroneHud {
     private static final double STREAK_INNER = 0.42D;
 
     /** Past this range the link readout turns amber, warning the pilot before the leash snaps. */
-    private static final double LINK_WARN = ReconDroneEntity.LINK_RANGE * 0.75D;
+    private static double linkWarn() {
+        return ReconDroneEntity.LINK_RANGE * 0.75D;
+    }
 
     private DroneHud() {
     }
@@ -61,6 +63,14 @@ public final class DroneHud {
         int width = graphics.guiWidth();
         int height = graphics.guiHeight();
         long millis = System.currentTimeMillis();
+
+        // 引爆之后接管整个画面：这时候剩下的只有雪花，仪表盘、准星、提示条全都让位。
+        int staticTicks = drone.getStaticTicks();
+        if (staticTicks > 0) {
+            drawDetonationStatic(graphics, width, height, staticTicks, DroneShake.overlayRamp());
+            return;
+        }
+
         double range = minecraft.player == null ? 0.0D : Math.sqrt(drone.distanceToSqr(minecraft.player));
         double breakup = DroneSignal.amount(range);
 
@@ -75,6 +85,69 @@ public final class DroneHud {
                 drone.hasModule(DroneModules.ATTACK) ? chargeKeys(minecraft) : null);
         if (breakup >= 1.0D) {
             drawSignalLost(graphics, minecraft.font, width, height, millis);
+        }
+    }
+
+    // ------------------------------------------------------------------ detonation
+
+    /**
+     * 引爆后的满屏雪花。
+     *
+     * <p>和远处的信号劣化不是一回事：那个是"画面变糊"，这个是"画面没了"。所以这里不铺牛奶色的
+     * 薄雾、也不加暗角，只堆最原始的白噪声 - 密、亮、每帧重掷，中间夹几条横向撕裂，偶尔整屏刷白。
+     *
+     * <p>最后八刻按剩余刻数减少颗粒，画面自己"烧完"，避免时间一到硬切回正常视角。
+     *
+     * <p>{@code ramp} 是开头那一段，由 {@link DroneShake} 给出：冲击窗口内从 0 爬到 1。
+     * 它是这套效果能不能被看见的前提 —— 底色原本第一刻就是全黑，镜头被掀、画面被径向拽开
+     * 全都发生在它后面，等于白做。现在底色从三成不透明起步，先透出被冲歪、被拽花的世界，
+     * 再在 0.15 秒里糊死；同时最开头补一记炸白。{@code shakeSeconds} 配成 0 时 {@code ramp}
+     * 恒为 1，这里逐字退回从前的行为。
+     *
+     * @param remaining 雪花屏还剩多少刻
+     * @param ramp      开头渐入的进度，0 到 1
+     */
+    private static void drawDetonationStatic(GuiGraphics graphics, int width, int height,
+                                             int remaining, double ramp) {
+        double fade = Math.max(0.0D, Math.min(1.0D, remaining / 8.0D));
+
+        int baseAlpha = (int) Math.round(255.0D * (0.30D + 0.70D * ramp));
+        graphics.fill(0, 0, width, height, (baseAlpha << 24) | 0x05070A);
+
+        // 炸白的那一瞬。退得比什么都快，所以它读起来是"闪"，不是"渐变"。
+        double flash = Math.max(0.0D, 1.0D - ramp * 1.45D);
+        if (flash > 0.01D) {
+            graphics.fill(0, 0, width, height, ((int) (0x72 * flash) << 24) | 0xFFFFFF);
+        }
+
+        RandomSource random = RandomSource.create();
+
+        // 颗粒也跟着爬：先稀稀拉拉地漏，再密到什么都看不见。
+        double grainRamp = 0.35D + 0.65D * ramp;
+        int grains = (int) (Math.min(width * height / 3, 60000) * fade * grainRamp);
+        for (int i = 0; i < grains; i++) {
+            int x = random.nextInt(width);
+            int y = random.nextInt(height);
+            int grey = random.nextInt(256);
+            int alpha = 0x60 + random.nextInt(0xA0);
+            graphics.fill(x, y, x + 1, y + 1, alpha << 24 | grey << 16 | grey << 8 | grey);
+        }
+        if (fade < 1.0D) {
+            return;
+        }
+
+        // 横向撕裂条：同步丢失的味道，短视频那种"画面被扯开"的感觉。
+        int tears = 6 + random.nextInt(6);
+        for (int i = 0; i < tears; i++) {
+            int y = random.nextInt(height);
+            int thickness = 1 + random.nextInt(3);
+            int alpha = 0x30 + random.nextInt(0x70);
+            graphics.fill(0, y, width, Math.min(height, y + thickness), alpha << 24 | 0xE8F2FA);
+        }
+
+        // 白色闪帧，让这团雪花"还在炸"而不是一张静态噪点图。
+        if (random.nextInt(5) == 0) {
+            graphics.fill(0, 0, width, height, 0x40FFFFFF);
         }
     }
 
@@ -365,7 +438,7 @@ public final class DroneHud {
         row(graphics, font, labelX, valueX, textX, valueRight, textY, TEXT_DIM, TEXT);
         row(graphics, font, labelY, valueY, textX, valueRight, textY + lineHeight, TEXT_DIM, TEXT);
         row(graphics, font, labelR, valueR, textX, valueRight, textY + lineHeight * 2, TEXT_DIM,
-                range > LINK_WARN ? AMBER : CYAN);
+                range > linkWarn() ? AMBER : CYAN);
         row(graphics, font, labelH, valueH, textX, valueRight, textY + lineHeight * 3, TEXT_DIM,
                 health <= ReconDroneEntity.MAX_HEALTH * 0.3F ? HURT : CYAN);
     }
@@ -412,9 +485,16 @@ public final class DroneHud {
         hints.add(new Hint("[" + key(KeyMappings.RECALL) + "] " + translate("hud.watchcraft.recall"), TEXT_DIM));
         if (chargeKeys != null) {
             hints.add(new Hint("[" + chargeKeys + "] " + translate("hud.watchcraft.charge"), HURT));
+            hints.add(new Hint("[" + key(KeyMappings.DETONATE) + "] "
+                    + translate("hud.watchcraft.detonate"), HURT));
         }
         hints.add(new Hint("[WASD] " + translate("hud.watchcraft.move"), TEXT_DIM));
         hints.add(new Hint("[SPACE/SHIFT] " + translate("hud.watchcraft.altitude"), TEXT_DIM));
+        // 滚筒亮起来的时候给它上高亮，让"现在正在滚 / 正在冲刺"这件事看得见。
+        // 冲刺时再换一种更亮的颜色，和普通滚筒区分开。
+        hints.add(new Hint("[" + key(KeyMappings.ROLL) + "] " + translate("hud.watchcraft.roll"),
+                DroneController.isRollerDashing() ? HURT
+                        : DroneController.isRollerActive() ? CYAN : TEXT_DIM));
         hints.add(new Hint("[" + translate("hud.watchcraft.look") + "] " + translate("hud.watchcraft.aim"), TEXT_DIM));
 
         int gap = font.width(SEPARATOR);

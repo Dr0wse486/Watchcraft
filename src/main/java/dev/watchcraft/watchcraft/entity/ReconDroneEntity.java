@@ -62,12 +62,12 @@ public class ReconDroneEntity extends Entity {
     // ------------------------------------------------------------------ tuning
 
     /** How many drones one player may have out in the world at the same time. */
-    public static final int MAX_DEPLOYED = 1;
+    public static int MAX_DEPLOYED = 1;
 
     /** How far the pilot may wander away from the drone before the link drops. */
-    public static final double LINK_RANGE = 64.0D;
+    public static double LINK_RANGE = 64.0D;
     /** Distance at which the visor picture starts to break up. */
-    public static final double STATIC_ONSET = 48.0D;
+    public static double STATIC_ONSET = 48.0D;
     /**
      * Extra static strength for every this many blocks past the onset. The gap between
      * {@link #STATIC_ONSET} and {@link #LINK_RANGE} is sixteen blocks, so this divides it into
@@ -76,11 +76,11 @@ public class ReconDroneEntity extends Entity {
      * <p>Note that {@code LINK_RANGE * 0.75} - the point where the range readout turns amber - is
      * also 48, so the picture and the warning light come on together.
      */
-    public static final double STATIC_STEP = 4.0D;
+    public static double STATIC_STEP = 4.0D;
     /** How far the camera can spot living entities. */
-    public static final double SCAN_RANGE = 48.0D;
+    public static double SCAN_RANGE = 48.0D;
     /** Full cone angle of the scan, in degrees. */
-    public static final double SCAN_FOV = 110.0D;
+    public static double SCAN_FOV = 110.0D;
     /**
      * Full cone angle used while the drone is still in its throw.
      *
@@ -88,16 +88,16 @@ public class ReconDroneEntity extends Entity {
      * nose sweeps down and away from whatever the player was actually looking at; a cone tight
      * enough to feel like aiming slides straight past the target it flew over.
      */
-    public static final double THROW_SCAN_FOV = 150.0D;
+    public static double THROW_SCAN_FOV = 150.0D;
     /**
      * Inside this radius the cone is ignored entirely - anything this close to the lens is in
      * frame no matter which way the drone happens to be pointing.
      */
-    public static final double PING_RADIUS = 8.0D;
+    public static double PING_RADIUS = 8.0D;
     /** The same idea, stretched out while thrown, so a fast pass still pings what it flies by. */
-    public static final double THROW_PING_RADIUS = 16.0D;
+    public static double THROW_PING_RADIUS = 16.0D;
     /** Ticks a spotted entity stays lit. */
-    public static final int GLOW_DURATION = 60;
+    public static int GLOW_DURATION = 60;
     /**
      * Ticks between two scans.
      *
@@ -105,37 +105,37 @@ public class ReconDroneEntity extends Entity {
      * server spends, and eight ticks was slow enough that a thrown drone crossed a target's whole
      * angular width between two sweeps without ever seeing it.
      */
-    public static final int SCAN_INTERVAL = 2;
+    public static int SCAN_INTERVAL = 2;
     /** Ceiling on line-of-sight raycasts per scan, so a crowd cannot turn a sweep into a stall. */
-    public static final int MAX_RAYCASTS_PER_SCAN = 24;
+    public static int MAX_RAYCASTS_PER_SCAN = 24;
     /** Blocks per tick while piloted. Kept deliberately slow so the drone reads as a scout. */
-    public static final double FLIGHT_SPEED = 0.24D;
+    public static double FLIGHT_SPEED = 0.24D;
     /** How far the drone can reach when the pilot right clicks. */
-    public static final double INTERACT_RANGE = 5.0D;
+    public static double INTERACT_RANGE = 5.0D;
     /** Hard cap on how far the server accepts a single client reported move. */
-    public static final double MAX_STEP = 1.8D;
+    public static double MAX_STEP = 1.8D;
     /** Initial speed of a thrown drone. */
-    public static final double THROW_SPEED = 0.85D;
+    public static double THROW_SPEED = 0.85D;
     /** How long a thrown drone keeps its ballistic phase. */
-    public static final int THROW_TICKS = 60;
+    public static int THROW_TICKS = 60;
 
     // ------------------------------------------------------------------ combat
 
     /** Hit points. Ten points is five hearts, so a handful of sword swings brings it down. */
-    public static final float MAX_HEALTH = 10.0F;
+    public static float MAX_HEALTH = 10.0F;
     /** Ticks of immunity after a hit, so the airframe cannot be burst down in one swing chain. */
-    public static final int HURT_INVULNERABLE_TICKS = 10;
+    public static int HURT_INVULNERABLE_TICKS = 10;
     /** Ticks the red damage flash lasts on the client. */
-    public static final int HURT_FLASH_TICKS = 10;
+    public static int HURT_FLASH_TICKS = 10;
     /** Vanilla entity event id for "took damage" - the same one LivingEntity broadcasts. */
     public static final byte EVENT_HURT = 2;
 
     // ------------------------------------------------------------------ attack run
 
     /** Blocks per tick during an attack run. Roughly six times cruise, which is what sells it. */
-    public static final double CHARGE_SPEED = 1.45D;
+    public static double CHARGE_SPEED = 1.45D;
     /** A run that hits nothing gives up after this long, so the drone cannot fly off forever. */
-    public static final int CHARGE_MAX_TICKS = 60;
+    public static int CHARGE_MAX_TICKS = 60;
     /**
      * How far the pilot may swing the nose off the axis the run locked to, in degrees.
      *
@@ -150,7 +150,7 @@ public class ReconDroneEntity extends Entity {
      * over the length of a run even sixteen degrees is worth twenty five blocks of lateral travel,
      * so there is plenty of room to lead a moving target without the line going slack.
      */
-    public static final double CHARGE_CONE = 16.0D;
+    public static double CHARGE_CONE = 16.0D;
     /**
      * The envelope the server enforces, deliberately wider than {@link #CHARGE_CONE}.
      *
@@ -159,15 +159,22 @@ public class ReconDroneEntity extends Entity {
      * modified client gets the wide cone at worst, which is a slightly longer nudge - not a free
      * turn.
      */
-    public static final double CHARGE_CONE_SLACK = 22.0D;
+    public static double CHARGE_CONE_SLACK = 22.0D;
     /** Ticks before the warhead can be armed again. Stops a held sprint key from re-triggering. */
-    public static final int CHARGE_COOLDOWN_TICKS = 40;
-    /** Blast radius. Small on purpose - the damage is what this is for, not the crater. */
-    public static final float CHARGE_EXPLOSION_RADIUS = 2.5F;
+    public static int CHARGE_COOLDOWN_TICKS = 40;
+    /** Blast radius. Three blocks covers a doorway and the room behind it. */
+    public static float CHARGE_EXPLOSION_RADIUS = 3.0F;
     /** Blocks are only broken within this distance of the impact point. */
-    public static final double CHARGE_CRATER = 1.6D;
+    public static double CHARGE_CRATER = 2.0D;
     /** Flat damage every entity in the blast takes, before armour and enchantments. */
-    public static final float CHARGE_DAMAGE = 20.0F;
+    public static float CHARGE_DAMAGE = 125.0F;
+    /**
+     * 引爆后满屏雪花屏的刻数。
+     *
+     * <p>这个阶段机体还没被移除：镜头仍然停在无人机上，画面被雪花彻底盖住，
+     * 时间到了才真正销毁并断开链路，把视角还给玩家。40 刻等于 2 秒。
+     */
+    public static int CHARGE_STATIC_TICKS = 40;
     /**
      * How much of the remaining gap to the server's reported position the pilot's client closes
      * each tick while charging.
@@ -184,7 +191,7 @@ public class ReconDroneEntity extends Entity {
      * steps. Lower values smooth more but leave a visible gap between where the drone is drawn and
      * where the blast eventually goes off.
      */
-    public static final double CHARGE_ECHO_CHASE = 0.9D;
+    public static double CHARGE_ECHO_CHASE = 0.9D;
 
     // ------------------------------------------------------------------ aiming maths
 
@@ -250,11 +257,11 @@ public class ReconDroneEntity extends Entity {
      * client derives this from the rotation stream it already receives, so it costs no extra
      * network traffic and every viewer sees the same lean.
      */
-    public static final float BANK_GAIN = 1.8F;
+    public static float BANK_GAIN = 1.8F;
     /** Hard cap on the turn lean. */
-    public static final float MAX_BANK = 30.0F;
+    public static float MAX_BANK = 30.0F;
     /** How fast the lean chases its target, per tick. */
-    public static final float BANK_SMOOTHING = 0.3F;
+    public static float BANK_SMOOTHING = 0.3F;
 
     // ------------------------------------------------------------------ data
 
@@ -296,6 +303,26 @@ public class ReconDroneEntity extends Entity {
     private static final EntityDataAccessor<Float> DATA_CHARGE_PITCH =
             SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.FLOAT);
 
+    /**
+     * Barrel roll angle in degrees, 0 to 360.
+     *
+     * <p>Synced rather than derived, unlike the turn lean, because it is not a function of the
+     * rotation stream: the pilot presses a key and the airframe spins about its own nose while its
+     * heading is unchanged. Everyone else has to be told. It rides in the movement packet that is
+     * already sent every tick, so the roll costs four bytes a tick and no extra message.
+     */
+    private static final EntityDataAccessor<Float> DATA_ROLL =
+            SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.FLOAT);
+
+    /**
+     * 引爆后雪花屏的剩余刻数，0 表示正常。
+     *
+     * <p>同步给客户端，好让驾驶员这一侧知道该把整块屏幕糊上雪花。这个数字同时充当倒计时：
+     * 归零的那一刻机体才真正被移除，链路断开，镜头回到玩家身上。
+     */
+    private static final EntityDataAccessor<Integer> DATA_STATIC_TICKS =
+            SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.INT);
+
     @Nullable
     private UUID ownerUUID;
     private boolean thrown;
@@ -317,6 +344,8 @@ public class ReconDroneEntity extends Entity {
      * the wreck. This is the latch that keeps the explosion from killing the drone twice.
      */
     private boolean detonating;
+    /** 服务端：雪花屏阶段剩余的刻数，大于 0 时机体冻结、等待销毁。 */
+    private int staticTicks;
 
     /** Client side damage flash timer, driven by {@link #EVENT_HURT}. */
     private int hurtTime;
@@ -324,6 +353,9 @@ public class ReconDroneEntity extends Entity {
     private float bank;
     private float bankO;
     private float bankYaw;
+    /** Client side barrel roll, plus last tick's value so the renderer can interpolate. */
+    private float roll;
+    private float rollO;
     /** Client side: the last position the server reported for a run, chased in {@link #clientTick}. */
     private Vec3 chargeTarget = Vec3.ZERO;
     private boolean chargeTargetSet;
@@ -335,6 +367,54 @@ public class ReconDroneEntity extends Entity {
         super(type, level);
         this.setNoGravity(true);
         this.noPhysics = false;
+    }
+
+    // ------------------------------------------------------------------ config
+
+    /**
+     * 把配置文件里的平衡值写进这一串静态常量。
+     *
+     * <p>由 {@code ModConfigEvent} 在载入/热重载后调用。之所以做成镜像而不是在使用处直接读，
+     * 是因为 {@code ConfigValue#get()} 在配置尚未载入时会抛异常，而这些常量被静态上下文引用。
+     */
+    public static void applyConfig() {
+        var common = dev.watchcraft.watchcraft.config.WatchcraftConfig.COMMON;
+        MAX_DEPLOYED = common.maxDeployed.get();
+        LINK_RANGE = common.linkRange.get();
+        STATIC_ONSET = common.staticOnset.get();
+        STATIC_STEP = common.staticStep.get();
+        FLIGHT_SPEED = common.flightSpeed.get();
+        INTERACT_RANGE = common.interactRange.get();
+        MAX_STEP = common.maxStep.get();
+        THROW_SPEED = common.throwSpeed.get();
+        THROW_TICKS = common.throwTicks.get();
+        MAX_HEALTH = common.maxHealth.get().floatValue();
+        HURT_INVULNERABLE_TICKS = common.hurtInvulnerableTicks.get();
+        HURT_FLASH_TICKS = common.hurtFlashTicks.get();
+
+        SCAN_RANGE = common.scanRange.get();
+        SCAN_FOV = common.scanFov.get();
+        THROW_SCAN_FOV = common.throwScanFov.get();
+        PING_RADIUS = common.pingRadius.get();
+        THROW_PING_RADIUS = common.throwPingRadius.get();
+        GLOW_DURATION = common.glowDuration.get();
+        SCAN_INTERVAL = common.scanInterval.get();
+        MAX_RAYCASTS_PER_SCAN = common.maxRaycastsPerScan.get();
+
+        BANK_GAIN = common.bankGain.get().floatValue();
+        MAX_BANK = common.maxBank.get().floatValue();
+        BANK_SMOOTHING = common.bankSmoothing.get().floatValue();
+
+        CHARGE_SPEED = common.chargeSpeed.get();
+        CHARGE_MAX_TICKS = common.chargeMaxTicks.get();
+        CHARGE_CONE = common.chargeCone.get();
+        CHARGE_CONE_SLACK = common.chargeConeSlack.get();
+        CHARGE_COOLDOWN_TICKS = common.chargeCooldownTicks.get();
+        CHARGE_EXPLOSION_RADIUS = common.chargeExplosionRadius.get().floatValue();
+        CHARGE_CRATER = common.chargeCraterRadius.get();
+        CHARGE_DAMAGE = common.chargeDamage.get().floatValue();
+        CHARGE_ECHO_CHASE = common.chargeEchoChase.get();
+        CHARGE_STATIC_TICKS = common.chargeStaticTicks.get();
     }
 
     // ------------------------------------------------------------------ setup
@@ -350,6 +430,8 @@ public class ReconDroneEntity extends Entity {
         // client always has a value to clamp against rather than a null to guard.
         builder.define(DATA_CHARGE_YAW, 0.0F);
         builder.define(DATA_CHARGE_PITCH, 0.0F);
+        builder.define(DATA_ROLL, 0.0F);
+        builder.define(DATA_STATIC_TICKS, 0);
     }
 
     @Override
@@ -481,9 +563,50 @@ public class ReconDroneEntity extends Entity {
         return Mth.lerp(partialTick, this.bankO, this.bank);
     }
 
+    /** {@return the barrel roll angle the server last accepted, in degrees} */
+    public float getRoll() {
+        return this.entityData.get(DATA_ROLL);
+    }
+
+    /** Stores a barrel roll angle, folded into 0..360. */
+    public void setRoll(float roll) {
+        if (!Float.isFinite(roll)) {
+            return;
+        }
+        this.entityData.set(DATA_ROLL, wrapRoll(roll));
+    }
+
+    /** {@return {@code degrees} folded into 0..360} */
+    public static float wrapRoll(float degrees) {
+        float wrapped = degrees % 360.0F;
+        return wrapped < 0.0F ? wrapped + 360.0F : wrapped;
+    }
+
+    /**
+     * Interpolated barrel roll in degrees, for the renderer.
+     *
+     * <p>Wrap aware, and that matters: a roll ends by folding 359 back to 0, which is the same
+     * orientation but not the same number, and a plain lerp across that seam would read the last
+     * degree of the roll as a full turn back the other way.
+     */
+    public float getRoll(float partialTick) {
+        float delta = Mth.wrapDegrees(this.roll - this.rollO);
+        return wrapRoll(this.rollO + delta * partialTick);
+    }
+
     public void markThrown() {
         this.thrown = true;
         this.throwTicks = 0;
+    }
+
+    /** {@return 引爆后雪花屏还剩多少刻，0 表示一切正常} */
+    public int getStaticTicks() {
+        return this.entityData.get(DATA_STATIC_TICKS);
+    }
+
+    /** {@return 是否处于引爆后的雪花屏阶段} */
+    public boolean isDetonated() {
+        return this.getStaticTicks() > 0;
     }
 
     // ------------------------------------------------------------------ entity overrides
@@ -520,7 +643,7 @@ public class ReconDroneEntity extends Entity {
      */
     @Override
     public boolean hurt(DamageSource source, float amount) {
-        if (this.isRemoved() || this.detonating) {
+        if (this.isRemoved() || this.detonating || this.isDetonated()) {
             return false;
         }
         if (amount <= 0.0F || this.isInvulnerableTo(source)) {
@@ -668,6 +791,8 @@ public class ReconDroneEntity extends Entity {
             this.hurtTime--;
         }
         this.tickBank();
+        this.rollO = this.roll;
+        this.roll = this.getRoll();
     }
 
     /**
@@ -736,6 +861,13 @@ public class ReconDroneEntity extends Entity {
             this.holdPilot(pilot);
         }
 
+        // 引爆后的雪花屏阶段：机体还在，链路还在，位置冻结，倒计时归零才真正销毁。
+        // 放在攻击判定之前，是因为这时候已经没有攻击可言了，剩下的只有等画面烧完。
+        if (this.staticTicks > 0) {
+            this.tickStatic();
+            return;
+        }
+
         // A run owns the airframe outright. Nothing else may touch it until it lands.
         if (this.isCharging()) {
             this.tickCharge(serverLevel);
@@ -785,12 +917,31 @@ public class ReconDroneEntity extends Entity {
         pilot.setDeltaMovement(0.0D, motion.y, 0.0D);
     }
 
+    /**
+     * 雪花屏阶段的一刻。
+     *
+     * <p>只做三件事：冻结位移、把剩余刻数写回同步数据、归零时真正销毁并断开链路。
+     * 机体的移除刻意推迟到这里，因为镜头正停在它身上 - 一旦立刻 discard，客户端会在同一刻
+     * 把视角弹回玩家，雪花屏就没了承载它的那两秒。
+     */
+    private void tickStatic() {
+        this.setDeltaMovement(Vec3.ZERO);
+        this.staticTicks--;
+        this.entityData.set(DATA_STATIC_TICKS, this.staticTicks);
+        if (this.staticTicks <= 0) {
+            this.wreckDrone();
+        }
+    }
+
     public void disconnectPilot() {
         int id = this.getPilotId();
         if (id < 0) {
             return;
         }
         this.setPilotId(-1);
+        // A pilot who unlinks mid roll would otherwise leave the airframe frozen on its side: the
+        // roll is only ever driven by the pilot's own client, so nobody is left to finish it.
+        this.setRoll(0.0F);
         if (this.level() instanceof ServerLevel serverLevel
                 && serverLevel.getEntity(id) instanceof ServerPlayer player) {
             dev.watchcraft.watchcraft.network.ModNetwork.sendLinkState(player, -1, false);
@@ -841,7 +992,10 @@ public class ReconDroneEntity extends Entity {
         if (this.level().isClientSide || this.isRemoved()) {
             return false;
         }
-        if (this.isCharging() || this.chargeCooldown > 0) {
+        // 引爆之后的雪花屏阶段机体已经没了，链路却还挂着。不挡住的话，一个改过的客户端
+        // 能在残骸上再武装一次战斗部，把 DATA_CHARGING 重新点亮 —— 服务端那一侧被
+        // tickStatic 挡着不会真的再炸一次，但驾驶员那侧会切进冲刺瞄准分支，状态就散了。
+        if (this.isCharging() || this.isDetonated() || this.chargeCooldown > 0) {
             return false;
         }
         if (!this.hasModule(DroneModules.ATTACK) || !this.isPilotedBy(pilot)) {
@@ -945,13 +1099,18 @@ public class ReconDroneEntity extends Entity {
         }
     }
 
-    /** Anything solid that is not the pilot. */
+    /**
+     * 冲刺撞击的合法目标：除自己以外，任何体型正常、没有旁观的东西。
+     *
+     * <p>驾驶员本人与放飞者都在这个名单里。早先这里把驾驶员排除在外，结果是无人机撞到自己
+     * 人身上会直接穿过去 - 既打不到别人家的玩家，也打不到站在旁边遥控的主人。现在两者都可
+     * 以撞，代价是操作时要看着点自己的站位。
+     */
     private boolean isChargeTarget(Entity entity) {
         return entity != this
                 && !entity.isRemoved()
                 && !entity.isSpectator()
-                && entity.isPickable()
-                && entity.getId() != this.getPilotId();
+                && entity.isPickable();
     }
 
     /**
@@ -997,8 +1156,43 @@ public class ReconDroneEntity extends Entity {
             this.detonating = false;
         }
 
-        // Handles the unlink, the marks, the smoke and the wreck in one place.
-        this.wreckDrone();
+        // 不是马上销毁，而是先进入雪花屏阶段：镜头留在原地，画面糊掉两秒，
+        // 时间到了才收拾残骸、断开链路、把视角还给玩家。
+        this.beginStatic();
+    }
+
+    /**
+     * 手动引爆。
+     *
+     * <p>只是多了一条通往 {@link #detonate} 的路，判定仍然全部在这里：得是驾驶员本人、
+     * 机体上真的装了战斗部、当前不在冲刺也不在雪花屏里。
+     */
+    public boolean detonateManually(ServerPlayer pilot) {
+        if (this.level().isClientSide || this.isRemoved()) {
+            return false;
+        }
+        if (this.isCharging() || this.isDetonated() || this.detonating) {
+            return false;
+        }
+        if (!this.hasModule(DroneModules.ATTACK) || !this.isPilotedBy(pilot)) {
+            return false;
+        }
+        this.detonate((ServerLevel) this.level(), this.position());
+        return true;
+    }
+
+    /**
+     * 进入雪花屏阶段。
+     *
+     * <p>{@link #CHARGE_STATIC_TICKS} 为 0 时直接走原来的即时销毁，方便把这个效果关掉。
+     */
+    private void beginStatic() {
+        if (CHARGE_STATIC_TICKS <= 0) {
+            this.wreckDrone();
+            return;
+        }
+        this.staticTicks = CHARGE_STATIC_TICKS;
+        this.entityData.set(DATA_STATIC_TICKS, CHARGE_STATIC_TICKS);
     }
 
     // ------------------------------------------------------------------ scanning

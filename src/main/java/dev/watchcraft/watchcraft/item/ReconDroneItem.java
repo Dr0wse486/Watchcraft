@@ -2,8 +2,10 @@ package dev.watchcraft.watchcraft.item;
 
 import dev.watchcraft.watchcraft.entity.ReconDroneEntity;
 import dev.watchcraft.watchcraft.registry.ModEntities;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
@@ -12,9 +14,12 @@ import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.List;
 
 public class ReconDroneItem extends Item {
 
@@ -79,8 +84,37 @@ public class ReconDroneItem extends Item {
         return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
     }
 
+    /**
+     * 物品说明，以及挂在机体上的模块清单。
+     *
+     * <p>模块名称直接从模块物品自己的名字取，而不是再抄一份语言键：这样以后加第三块模块时，
+     * 只要它是个 {@link DroneModuleItem}，这里就自动认得。
+     */
     @Override
-    public boolean isFoil(net.minecraft.world.item.ItemStack stack) {
-        return true;
+    public void appendHoverText(ItemStack stack, Item.TooltipContext context,
+                                List<Component> tooltip, TooltipFlag flag) {
+        tooltip.add(Component.translatable("item.watchcraft.recon_drone.desc")
+                .withStyle(ChatFormatting.GRAY));
+
+        int mask = DroneModules.of(stack);
+        if (mask == 0) {
+            tooltip.add(Component.translatable("tooltip.watchcraft.no_modules")
+                    .withStyle(ChatFormatting.DARK_GRAY));
+            return;
+        }
+
+        tooltip.add(Component.translatable("tooltip.watchcraft.installed")
+                .withStyle(ChatFormatting.DARK_AQUA));
+        for (int bit : new int[]{DroneModules.CUSTOMIZATION, DroneModules.ATTACK}) {
+            if (!DroneModules.has(mask, bit)) {
+                continue;
+            }
+            ItemStack module = DroneModules.moduleStack(bit);
+            if (!module.isEmpty()) {
+                tooltip.add(Component.literal("  ")
+                        .append(module.getHoverName())
+                        .withStyle(ChatFormatting.AQUA));
+            }
+        }
     }
 }

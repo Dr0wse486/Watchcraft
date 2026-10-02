@@ -57,10 +57,15 @@ public final class ModNetwork {
      * <p>Every cockpit message has to pass through this first. The id is chosen by the client, so
      * without the pilot half of the check anyone could drive somebody else's airframe simply by
      * guessing a number.
+     *
+     * <p>引爆后的雪花屏阶段一并挡住。那时候链路还在（镜头正停在残骸上等着画面烧完），
+     * 但机体已经炸了：再让驾驶员用它的触及距离去开门、或者往服务端报位移，都是在操作一具残骸。
      */
     @Nullable
     private static ReconDroneEntity piloted(ServerLevel level, ServerPlayer player, int droneId) {
-        return level.getEntity(droneId) instanceof ReconDroneEntity drone && drone.isPilotedBy(player)
+        return level.getEntity(droneId) instanceof ReconDroneEntity drone
+                && drone.isPilotedBy(player)
+                && !drone.isDetonated()
                 ? drone
                 : null;
     }
@@ -96,6 +101,7 @@ public final class ModNetwork {
             case DroneActionPayload.ACTION_RECALL -> recall(level, player);
             case DroneActionPayload.ACTION_INTERACT -> interact(level, player, payload.droneId());
             case DroneActionPayload.ACTION_CHARGE -> charge(level, player, payload.droneId());
+            case DroneActionPayload.ACTION_DETONATE -> detonate(level, player, payload.droneId());
             default -> {
             }
         }
@@ -112,6 +118,16 @@ public final class ModNetwork {
     private static void charge(ServerLevel level, ServerPlayer player, int droneId) {
         if (level.getEntity(droneId) instanceof ReconDroneEntity drone) {
             drone.startCharge(player);
+        }
+    }
+
+    /**
+     * 手动引爆请求。和冲刺一样薄：权限、模块、是否正在冲刺都在
+     * {@link ReconDroneEntity#detonateManually} 里判定。
+     */
+    private static void detonate(ServerLevel level, ServerPlayer player, int droneId) {
+        if (level.getEntity(droneId) instanceof ReconDroneEntity drone) {
+            drone.detonateManually(player);
         }
     }
 
@@ -200,6 +216,11 @@ public final class ModNetwork {
         if (drone == null) {
             return;
         }
+        // 雪花屏阶段机体已经炸了，位置由服务端冻结。这时候驾驶员那侧还会继续发包，
+        // 直接丢掉，否则镜头会被拖回它最后飞过的地方。
+        if (drone.isDetonated()) {
+            return;
+        }
         // One packet per tick. A stock client sends exactly one; anything more is a client trying
         // to buy speed, because MAX_STEP bounds a single packet rather than the packet rate.
         if (!drone.claimMoveSlot(drone.tickCount)) {
@@ -215,6 +236,11 @@ public final class ModNetwork {
         if (stepSqr > ReconDroneEntity.MAX_STEP * ReconDroneEntity.MAX_STEP) {
             return;
         }
+
+        // Purely cosmetic, so it is taken before the path splits and applies whether the pilot is
+        // flying the airframe or riding a committed run. Folded into 0..360 here rather than trusted,
+        // because the number in the packet is chosen by the client.
+        drone.setRoll(payload.roll());
 
         // Mid run the airframe belongs to the server, which owns the position and flies the line
         // itself. The packet is still worth accepting, because it carries the one thing the pilot

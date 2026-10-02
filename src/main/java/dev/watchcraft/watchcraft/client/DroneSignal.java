@@ -81,7 +81,13 @@ public final class DroneSignal {
      * stay resident at short range instead of being torn down and rebuilt every time the drone
      * crosses the onset distance.
      */
-    private static final float MAX_RADIUS = 6.0F;
+    private static float MAX_RADIUS = 6.0F;
+
+    /** 客户端配置载入/热重载后把模糊半径写回镜像。 */
+    public static void applyConfig() {
+        MAX_RADIUS = dev.watchcraft.watchcraft.config.WatchcraftConfig.CLIENT.signalMaxBlurRadius
+                .get().floatValue();
+    }
 
     /** The chain, built on the first frame it is needed and dropped when the link goes down. */
     private static PostChain effect;
@@ -139,6 +145,10 @@ public final class DroneSignal {
 
         resize(minecraft);
         effect.setUniform("Radius", radiusFor(minecraft, (ReconDroneEntity) camera));
+        // 引爆瞬间的径向模糊。两条 pass 共用一条时间轴，第二遍减半，拖影才是连续的一层
+        // 而不是一条硬边。不爆炸时这里是 0，着色器直接走单次采样的直通分支。
+        effect.setUniform("Strength", DroneShake.radialBlur());
+        effect.setUniform("Strength2", DroneShake.radialBlurSecondPass());
 
         // Exactly the sequence GameRenderer runs around its own post effect, and the rebind at the
         // end matters: without it the window framebuffer is left bound, and doEntityOutline would
