@@ -48,10 +48,24 @@ public final class ClientEvents {
     /** Per frame, so the drone's view follows the mouse at frame rate instead of at 20 Hz. */
     @SubscribeEvent
     public static void onRenderFrame(RenderFrameEvent.Pre event) {
+        // 排在最前：这一帧的画面只该反映无人机，驾驶员本体的画面状态要先挡掉。
+        DroneVisor.beginFrame();
         DroneController.syncLook();
         DroneController.tickFov();
         // 排在转向之后：转向每帧都会把无人机的朝向重写一遍，抖动放到它前面会被覆盖掉。
         DroneShake.frame();
+    }
+
+    /**
+     * 帧结束，把 {@link DroneVisor} 挪走的玩家状态还回去。
+     *
+     * <p>必须与上面的 {@code Pre} 成对。两个事件在 {@code Minecraft#runTick} 里紧挨着
+     * {@code GameRenderer#render} 的前后触发，并且同在 {@code if (!this.noRender)} 分支内，
+     * 所以 {@code Post} 一定跑得到 —— 没有"挪走了没还回来"的路径。
+     */
+    @SubscribeEvent
+    public static void onRenderFramePost(RenderFrameEvent.Post event) {
+        DroneVisor.endFrame();
     }
 
     /**
