@@ -57,9 +57,57 @@
   "hud.watchcraft.detonate": "detonate",
 
   "subtitles.watchcraft.tinnitus": "Tinnitus",
+  "subtitles.watchcraft.drone_boom": "Sonic boom",
 
   "command.watchcraft.doorinteract.enabled": "Drone door interaction: enabled (doors, trapdoors and fence gates)",
   "command.watchcraft.doorinteract.disabled": "Drone door interaction: disabled",
   "command.watchcraft.shake.enabled": "Detonation camera shake: enabled",
-  "command.watchcraft.shake.disabled": "Detonation camera shake: disabled"
+  "command.watchcraft.shake.disabled": "Detonation camera shake: disabled",
+
+  "watchcraft.config.title": "Watchcraft Settings",
+  "watchcraft.config.button": "Watchcraft Settings",
+  "watchcraft.config.reset": "Reset page",
+  "watchcraft.config.reset.tip": "Put every option on this page back to its default. Only this page is touched.",
+
+  "watchcraft.config.tab.flight": "Feel",
+  "watchcraft.config.tab.view": "Visuals",
+  "watchcraft.config.tab.roll": "Roll",
+  "watchcraft.config.tab.detonation": "Detonation",
+  "watchcraft.config.tab.hud": "HUD",
+
+  "watchcraft.config.flight.acceleration": "Flight acceleration",
+  "watchcraft.config.flight.deceleration": "Flight deceleration",
+  "watchcraft.config.look.gain": "Mouse sensitivity",
+  "watchcraft.config.look.smoothing": "Turn smoothing",
+
+  "watchcraft.config.camera.bankShare": "Camera bank follow",
+  "watchcraft.config.fov.speedGain": "Speed FOV",
+  "watchcraft.config.fov.speedEase": "Speed FOV easing",
+  "watchcraft.config.fov.chargeGain": "Charge FOV",
+  "watchcraft.config.fov.chargeEase": "Charge FOV easing",
+  "watchcraft.config.charge.aimTau": "Charge aim smoothing",
+  "watchcraft.config.charge.aimGain": "Charge aim sensitivity",
+  "watchcraft.config.signal.maxBlurRadius": "Signal blur radius",
+
+  "watchcraft.config.roll.ticks": "Roll duration",
+  "watchcraft.config.roll.cooldownTicks": "Roll cooldown",
+  "watchcraft.config.roll.recoverTicks": "Roll recovery",
+  "watchcraft.config.roll.cameraShare": "Camera roll follow",
+  "watchcraft.config.roll.turnsPerSecond": "Roll rate",
+  "watchcraft.config.roll.dashSpeedGain": "Roll dash boost",
+  "watchcraft.config.roll.fovGain": "Roll FOV",
+
+  "watchcraft.config.detonation.shakeEnabled": "Detonation camera shake",
+  "watchcraft.config.detonation.shakeSeconds": "Shake duration",
+  "watchcraft.config.detonation.shakeDisplacement": "Shake displacement",
+  "watchcraft.config.detonation.shakeAngle": "Shake angle",
+  "watchcraft.config.detonation.radialBlur": "Radial blur strength",
+  "watchcraft.config.detonation.tinnitusDelayMs": "Tinnitus delay",
+  "watchcraft.config.detonation.tinnitusVolume": "Tinnitus volume",
+  "watchcraft.config.detonation.tinnitusPitch": "Tinnitus pitch",
+
+  "watchcraft.config.hud.accent": "HUD accent",
+  "watchcraft.config.hud.accent.tip": "Any #RRGGBB (#abc works too). Reticle, frame, readouts, speed streaks and the key strip all follow it; the dim brackets, faint ticks and text colours are derived from it.",
+  "watchcraft.config.hud.telemetry": "Telemetry readout",
+  "watchcraft.config.hud.hints": "Key hint strip"
 }

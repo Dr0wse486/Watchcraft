@@ -1,5 +1,10 @@
 package dev.watchcraft.watchcraft.client;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.options.OptionsScreen;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.neoforged.api.distmarker.Dist;
@@ -14,11 +19,24 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 @EventBusSubscriber(modid = dev.watchcraft.watchcraft.Watchcraft.MOD_ID, value = Dist.CLIENT)
 public final class ClientEvents {
+
+    /** 原版选项界面那个按钮网格的行间距，取自它的 {@code paddingBottom(4)}。 */
+    private static final int OPTIONS_GRID_GAP = 4;
+
+    /** 上一次挂上去的入口按钮，以及它所属的那个界面，用来在窗口缩放后重新对齐。 */
+    @Nullable
+    private static Button optionsEntry;
+    @Nullable
+    private static OptionsScreen optionsEntryOwner;
 
     private ClientEvents() {
     }
@@ -28,12 +46,112 @@ public final class ClientEvents {
         ClientCommands.register(event);
     }
 
+    /**
+     * 把配置入口挂进原版「选项…」界面的按钮网格，落在最右下那一格。
+     *
+     * <p>为什么是「挂」而不是「插」：原版 {@code OptionsScreen} 的按钮是一个 2 列
+     * {@code GridLayout}（10 个，最后一行是「遥测 / 版权与鸣谢」），在 {@code init()} 里就已经
+     * {@code arrangeElements} 并 {@code visitWidgets} 完了。事件里够不着那个 GridLayout，也就
+     * 没法再 {@code addChild} 一行。所以这里自己算位置：找出网格最右下那一格，把按钮摆在它正
+     * 下方 —— 效果等同于给网格补第 11 个孩子，但不需要碰原版布局。
+     *
+     * <p>定位不比对按钮文案，靠的是「页脚那个 Done 一定在所有网格按钮之下」：先取全局最靠下的
+     * 按钮（Done），再在它之上找 y 最大、同 y 时 x 最大的那个，就是网格右下角。这样换语言、
+     * 换资源包都不会错位，原版增删网格行也只会让位置跟着走。
+     *
+     * <p>按钮宽度取锚点自身的宽度而不是写死：这一屏的邻居都是 150 宽，跟着邻居走才不会凹进去
+     * 一块。（暂停菜单里那套半宽按钮是 98，那个尺寸在这一屏没有对应的邻居。）
+     */
+    @SubscribeEvent
+    public static void onScreenInit(ScreenEvent.Init.Post event) {
+        if (!(event.getScreen() instanceof OptionsScreen options)) {
+            // 刻意**不清** optionsEntry / optionsEntryOwner。
+            //
+            // 从配置界面返回「选项」时这个事件不会再触发：Minecraft#setScreen 调的是
+            // Screen#init，而 Screen 只在 initialized 为假时才跑 init() 并派发本事件，
+            // 否则只调 repositionElements()（而 OptionsScreen 又把那个覆写成了
+            // layout.arrangeElements()，连控件都不重建）。所以在这里清引用，等于让
+            // 「返回之后再也对不齐位置」—— 引用留着，最多把一个界面对象多留一会儿。
+            return;
+        }
+        Button anchor = bottomRightOfGrid(options.children(), null);
+        if (anchor == null) {
+            return;
+        }
+        Button entry = Button.builder(
+                        Component.translatable("watchcraft.config.button"),
+                        button -> Minecraft.getInstance().setScreen(new WatchcraftConfigScreen(options)))
+                .bounds(anchor.getX(), anchor.getY() + anchor.getHeight() + OPTIONS_GRID_GAP,
+                        anchor.getWidth(), anchor.getHeight())
+                .build();
+        event.addListener(entry);
+        optionsEntry = entry;
+        optionsEntryOwner = options;
+    }
+
+    /**
+     * 窗口缩放之后把入口按钮重新对齐到网格右下角。
+     *
+     * <p>必须有这一手：{@code OptionsScreen} 覆写了 {@code repositionElements}，只调自己的
+     * {@code layout.arrangeElements()}，**不重建控件** —— 于是 {@code ScreenEvent.Init.Post}
+     * 不会再触发，而我们那个按钮不在它的 layout 里，原版按钮都挪了它却留在原地。
+     * （基类 {@code Screen#repositionElements} 反而是会 {@code rebuildWidgets()} 的，是这里被覆写掉了。）
+     * 每帧对一次位置的代价是几次整数比较。
+     */
+    @SubscribeEvent
+    public static void onScreenRender(ScreenEvent.Render.Pre event) {
+        if (optionsEntry == null || optionsEntryOwner == null || event.getScreen() != optionsEntryOwner) {
+            return;
+        }
+        Button anchor = bottomRightOfGrid(optionsEntryOwner.children(), optionsEntry);
+        if (anchor == null) {
+            return;
+        }
+        optionsEntry.setX(anchor.getX());
+        optionsEntry.setY(anchor.getY() + anchor.getHeight() + OPTIONS_GRID_GAP);
+    }
+
+    /**
+     * 找出按钮网格最右下那一格。
+     *
+     * <p>两步：先取全局最靠下的按钮 —— 那是页脚的 Done，它一定在网格之下；再在它上方找
+     * y 最大、同 y 时 x 最大的按钮，就是网格的右下角。{@code ignore} 用来排掉我们自己挂上去的
+     * 那个按钮，否则第二轮会把「网格右下角」认成我们自己的位置，越挪越低。
+     */
+    @Nullable
+    private static Button bottomRightOfGrid(List<? extends GuiEventListener> listeners, @Nullable Button ignore) {
+        Button footer = null;
+        for (GuiEventListener listener : listeners) {
+            if (listener instanceof Button button && button != ignore
+                    && (footer == null || button.getY() > footer.getY())) {
+                footer = button;
+            }
+        }
+        if (footer == null) {
+            return null;
+        }
+        Button best = null;
+        for (GuiEventListener listener : listeners) {
+            if (!(listener instanceof Button button) || button == ignore || button == footer
+                    || button.getY() >= footer.getY()) {
+                continue;
+            }
+            if (best == null || button.getY() > best.getY()
+                    || (button.getY() == best.getY() && button.getX() > best.getX())) {
+                best = button;
+            }
+        }
+        return best;
+    }
+
     @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         // 先认引爆，再跑操控：冲击一旦开始，操控那一侧已经什么都不做了（雪花屏阶段
         // 机体归服务端冻结），顺序上谁先谁后不影响结果，但把触发点放在前面读着更顺。
         DroneShake.tick();
         DroneController.tick();
+        // 旋翼声放在最后：它只读无人机当前的状态，谁先谁后都不影响这一帧的结果。
+        DroneSounds.tick();
     }
 
     /**

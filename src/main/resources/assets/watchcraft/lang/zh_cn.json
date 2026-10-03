@@ -57,9 +57,57 @@
   "hud.watchcraft.detonate": "引爆自爆",
 
   "subtitles.watchcraft.tinnitus": "耳鸣",
+  "subtitles.watchcraft.drone_boom": "音爆",
 
   "command.watchcraft.doorinteract.enabled": "无人机开门：已开启（可开启门 / 活板门 / 栅栏门）",
   "command.watchcraft.doorinteract.disabled": "无人机开门：已关闭",
   "command.watchcraft.shake.enabled": "引爆镜头摇晃：已开启",
-  "command.watchcraft.shake.disabled": "引爆镜头摇晃：已关闭"
+  "command.watchcraft.shake.disabled": "引爆镜头摇晃：已关闭",
+
+  "watchcraft.config.title": "Watchcraft 设置",
+  "watchcraft.config.button": "Watchcraft 设置",
+  "watchcraft.config.reset": "重置本页",
+  "watchcraft.config.reset.tip": "把本页所有选项还原成默认值。只影响这一页，不会动其他分类。",
+
+  "watchcraft.config.tab.flight": "手感",
+  "watchcraft.config.tab.view": "画面",
+  "watchcraft.config.tab.roll": "滚筒",
+  "watchcraft.config.tab.detonation": "引爆",
+  "watchcraft.config.tab.hud": "HUD",
+
+  "watchcraft.config.flight.acceleration": "飞行加速度",
+  "watchcraft.config.flight.deceleration": "飞行减速度",
+  "watchcraft.config.look.gain": "鼠标灵敏度",
+  "watchcraft.config.look.smoothing": "转向平滑",
+
+  "watchcraft.config.camera.bankShare": "镜头倾角跟随",
+  "watchcraft.config.fov.speedGain": "速度视场角",
+  "watchcraft.config.fov.speedEase": "速度视场角缓动",
+  "watchcraft.config.fov.chargeGain": "冲刺视场角",
+  "watchcraft.config.fov.chargeEase": "冲刺视场角缓动",
+  "watchcraft.config.charge.aimTau": "冲刺瞄准平滑",
+  "watchcraft.config.charge.aimGain": "冲刺瞄准灵敏度",
+  "watchcraft.config.signal.maxBlurRadius": "信号模糊半径",
+
+  "watchcraft.config.roll.ticks": "滚筒持续时间",
+  "watchcraft.config.roll.cooldownTicks": "滚筒冷却",
+  "watchcraft.config.roll.recoverTicks": "滚筒回正时间",
+  "watchcraft.config.roll.cameraShare": "镜头跟随滚筒",
+  "watchcraft.config.roll.turnsPerSecond": "滚筒转速",
+  "watchcraft.config.roll.dashSpeedGain": "滚筒冲刺加速",
+  "watchcraft.config.roll.fovGain": "滚筒视场角",
+
+  "watchcraft.config.detonation.shakeEnabled": "引爆镜头摇晃",
+  "watchcraft.config.detonation.shakeSeconds": "摇晃持续时间",
+  "watchcraft.config.detonation.shakeDisplacement": "摇晃位移",
+  "watchcraft.config.detonation.shakeAngle": "摇晃角度",
+  "watchcraft.config.detonation.radialBlur": "径向模糊强度",
+  "watchcraft.config.detonation.tinnitusDelayMs": "耳鸣延迟",
+  "watchcraft.config.detonation.tinnitusVolume": "耳鸣音量",
+  "watchcraft.config.detonation.tinnitusPitch": "耳鸣音高",
+
+  "watchcraft.config.hud.accent": "HUD 主色",
+  "watchcraft.config.hud.accent.tip": "填 #RRGGBB（#abc 也行）。改完准星、边框、读数、速度流线与按键条会一起变色；半透明括号、淡刻度和文字色由它自动派生。",
+  "watchcraft.config.hud.telemetry": "四行读数",
+  "watchcraft.config.hud.hints": "底部按键提示条"
 }
