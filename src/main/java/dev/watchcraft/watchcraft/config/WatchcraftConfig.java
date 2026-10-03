@@ -163,11 +163,13 @@ public final class WatchcraftConfig {
                     .comment("冲刺最长持续刻数，撞不到东西就自行引爆")
                     .defineInRange("maxTicks", 60, 1, 1200);
             chargeCone = builder
-                    .comment("驾驶舱内可以偏转冲刺轴的角度（度），客户端用")
-                    .defineInRange("cone", 16.0D, 0.0D, 90.0D);
+                    .comment("驾驶舱内可以偏转冲刺轴的角度（度），客户端用。"
+                            + "28 度在一次冲刺里约合 42 格横向位移，够绕开障碍也够贴住移动目标")
+                    .defineInRange("cone", 28.0D, 0.0D, 90.0D);
             chargeConeSlack = builder
-                    .comment("服务端实际容忍的偏转角度（度），应不小于 cone")
-                    .defineInRange("coneSlack", 22.0D, 0.0D, 90.0D);
+                    .comment("服务端实际容忍的偏转角度（度），应不小于 cone。"
+                            + "留出的余量让诚实客户端不会被夹第二次")
+                    .defineInRange("coneSlack", 36.0D, 0.0D, 90.0D);
             chargeCooldownTicks = builder
                     .comment("两次冲刺之间的冷却刻数")
                     .defineInRange("cooldownTicks", 40, 0, 1200);
@@ -215,7 +217,8 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.DoubleValue chargeFovEase;
 
         public final ModConfigSpec.IntValue chargeRequestCooldown;
-        public final ModConfigSpec.DoubleValue chargeAimSmoothing;
+        public final ModConfigSpec.DoubleValue chargeAimTau;
+        public final ModConfigSpec.DoubleValue chargeAimGain;
 
         public final ModConfigSpec.DoubleValue signalMaxBlurRadius;
 
@@ -227,6 +230,10 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.IntValue detonationTinnitusDelayMs;
         public final ModConfigSpec.DoubleValue detonationTinnitusVolume;
         public final ModConfigSpec.DoubleValue detonationTinnitusPitch;
+
+        public final ModConfigSpec.ConfigValue<String> hudAccentColor;
+        public final ModConfigSpec.BooleanValue hudShowTelemetry;
+        public final ModConfigSpec.BooleanValue hudShowHints;
 
         Client(ModConfigSpec.Builder builder) {
             builder.comment("飞行手感").push("flight");
@@ -298,9 +305,17 @@ public final class WatchcraftConfig {
             chargeRequestCooldown = builder
                     .comment("两次冲刺请求之间的最小刻数")
                     .defineInRange("requestCooldown", 10, 0, 200);
-            chargeAimSmoothing = builder
-                    .comment("冲刺瞄准的阻尼时间常数（秒）")
-                    .defineInRange("aimSmoothing", 0.07D, 0.005D, 1.0D);
+            chargeAimTau = builder
+                    .comment("冲刺瞄准的平滑时间常数（秒），用原版 F8 电影视角那套机制。"
+                            + "它平滑的是「转速」而不是「位置」，所以稳态下灵敏度是精确的 1:1，"
+                            + "只把变化抹圆 —— 这正是电影视角既跟手又不抖的原因。"
+                            + "参考值：原版电影视角的等效值随玩家灵敏度在 0.24~1.0 秒之间。"
+                            + "0.30 略钝于电影视角里最灵敏的那一档。调小更跟手，调大更沉稳")
+                    .defineInRange("aimTau", 0.30D, 0.03D, 1.5D);
+            chargeAimGain = builder
+                    .comment("冲刺时鼠标灵敏度的倍率。普通飞行的 look.gain 是 1.4，"
+                            + "所以 1.0 已经比平时难转；原版电影视角本身不放大灵敏度（等效 1.0）")
+                    .defineInRange("aimGain", 1.0D, 0.1D, 3.0D);
             builder.pop();
 
             builder.comment("信号劣化").push("signal");
@@ -335,6 +350,20 @@ public final class WatchcraftConfig {
             detonationTinnitusPitch = builder
                     .comment("耳鸣音高倍率，越大越尖")
                     .defineInRange("tinnitusPitch", 1.0D, 0.5D, 2.0D);
+            builder.pop();
+
+            builder.comment("抬头显示").push("hud");
+            hudAccentColor = builder
+                    .comment("HUD 主色，写 #RRGGBB（#abc 会展开成 #aabbcc）。准星、边框、读数、"
+                            + "速度流线与按键条都取这一色；半透明括号、淡刻度、正文与次要文字"
+                            + "由它按固定比例派生，所以换色系时整个面罩是一起变的")
+                    .define("accentColor", "#3BE8FF");
+            hudShowTelemetry = builder
+                    .comment("显示右上角的四行读数：X、Y、距操控者距离、剩余血量")
+                    .define("showTelemetry", true);
+            hudShowHints = builder
+                    .comment("显示底部的按键提示条。关掉后只剩准星与读数，适合截图")
+                    .define("showHints", true);
             builder.pop();
         }
     }

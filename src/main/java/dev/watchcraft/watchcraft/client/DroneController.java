@@ -111,28 +111,27 @@ public final class DroneController {
     // ------------------------------------------------------------------ attack run aiming
 
     /**
-     * Time constant of the aim damping, in seconds.
+     * 冲刺瞄准的平滑时间常数，秒。用原版 F8 电影视角那套机制，见 {@link CinematicAim}。
      *
-     * <p>While a run is up the crosshair does not follow the mouse one for one. The raw movement
-     * feeds a desired angle and the crosshair chases it on a first order lag, which is the same
-     * shape as vanilla's own cinematic camera: the view keeps drifting for a moment after the mouse
-     * stops, and a flick arrives as a sweep rather than as a jump. On a cone this tight that is
-     * what makes the aim feel tight rather than twitchy - the crosshair spends its time near the
-     * middle of the envelope instead of slamming into the edge and sticking there.
-     *
-     * <p>Expressed as a time constant rather than as a per frame fraction so the feel does not
-     * change with the frame rate. At 0.07 seconds the crosshair closes about two thirds of the gap
-     * in four frames at 60 fps and is settled inside a fifth of a second: smooth, but far too quick
-     * to read as input lag.
+     * <p>参考值：原版电影视角的等效值随玩家灵敏度在 0.24~1.0 秒之间，0.30 略钝于其中最灵敏的
+     * 那一档。调小更跟手，调大更沉稳。
      */
-    private static double CHARGE_AIM_TAU = 0.07D;
+    private static double CHARGE_AIM_TAU = 0.30D;
 
-    /** Aim as asked for by the mouse. */
+    /**
+     * 冲刺时鼠标灵敏度的倍率。
+     *
+     * <p>普通飞行走 {@link #LOOK_GAIN}（1.4），所以 1.0 已经明显比平时难转；而原版电影视角
+     * 本身并不放大灵敏度（等效 1.0）。这一项就是「比电影视角更难转向」的那个旋钮。
+     */
+    private static double CHARGE_AIM_GAIN = 1.0D;
+
+    /** 鼠标要求的角度。每帧都夹进锥内，免得在锥外积压出一段看不见的余量。 */
     private static float chargeDesiredYaw;
     private static float chargeDesiredPitch;
-    /** Aim after damping, which is what actually reaches the drone. */
-    private static float chargeAimYaw;
-    private static float chargeAimPitch;
+    /** 平滑后的瞄准，走电影视角那套「平滑转速而不是位置」的状态机。 */
+    private static final CinematicAim chargeAimYaw = new CinematicAim();
+    private static final CinematicAim chargeAimPitch = new CinematicAim();
     /** True once the aim state has been seeded for the run in progress. */
     private static boolean chargeAimSeeded;
     private static long lastFrameNanos;
@@ -286,7 +285,8 @@ public final class DroneController {
         CHARGE_FOV_GAIN = client.chargeFovGain.get();
         CHARGE_FOV_EASE = client.chargeFovEase.get();
         CHARGE_REQUEST_COOLDOWN = client.chargeRequestCooldown.get();
-        CHARGE_AIM_TAU = client.chargeAimSmoothing.get();
+        CHARGE_AIM_TAU = client.chargeAimTau.get();
+        CHARGE_AIM_GAIN = client.chargeAimGain.get();
     }
 
     public static boolean isLinked() {
@@ -319,6 +319,8 @@ public final class DroneController {
         reportedBody = Vec3.ZERO;
         reportedOnGround = false;
         resetFlight();
+        // 模式变了（定位音 ⇄ 驾驶舱音），让旋翼声立刻重建，别等轮询。
+        DroneSounds.refresh();
         // Linking in from behind an open inventory would leave it sitting over the visor forever.
         if (minecraft.screen != null) {
             minecraft.setScreen(null);
@@ -333,6 +335,7 @@ public final class DroneController {
         sprintWasDown = false;
         lastChargeRequest = -1000;
         resetFlight();
+        DroneSounds.refresh();
         if (minecraft.player != null) {
             minecraft.setCameraEntity(minecraft.player);
         }
@@ -818,55 +821,121 @@ public final class DroneController {
     }
 
     /**
-     * Damped steering for an attack run.
+     * Steers the attack run inside its fixed cone, every frame, including quiet frames.
      *
-     * <p>Runs on every frame whether or not the mouse moved, because the damping has to be allowed
-     * to finish converging after the last input. Skipping it on quiet frames would leave the
-     * crosshair parked wherever the final mouse event happened to drop it.
+     * <p>Uses vanilla's own cinematic-camera smoother ({@link CinematicAim}). Two earlier attempts
+     * are worth recording, because both felt wrong for the same underlying reason:
      *
-     * <p>The aim is clamped to the cone <em>and stored clamped</em>. That is what gives the cone a
-     * hard edge with no windup: past the edge further movement is simply discarded, so bringing the
-     * mouse back moves the crosshair at once instead of first unwinding an invisible backlog.
+     * <ul>
+     *   <li>A <b>first-order position lerp</b> makes the angular velocity proportional to the
+     *       remaining gap, so it is at its maximum on the very first frame of any input and decays
+     *       from there. Every small correction reads as a lurch followed by a coast.</li>
+     *   <li>A <b>critically damped spring</b> fixed the shape but starts far too gently - a tiny
+     *       nudge moved barely one percent of the way on the first frame - so it felt dead and
+     *       unresponsive while still being "smooth".</li>
+     * </ul>
      *
-     * <p>The axis comes from the entity's synced data rather than from a local copy, so this is
-     * literally the same reference the server clamps against and the two sides cannot disagree
-     * about where the run is heading.
+     * <p>The cinematic smoother avoids both by smoothing the <em>rate</em> rather than the position.
+     * Its steady-state gain is exactly one: hold the mouse moving and the view ends up turning at
+     * exactly the rate the mouse asks for, so nothing is lost to the filter. Only changes are
+     * rounded off. That is why it manages to feel smooth and responsive at the same time.
+     *
+     * <p>The mouse target is clamped into the cone every frame, and the smoothed angle is written
+     * back after clamping too. Clamping only the output would let the internal state accumulate an
+     * invisible backlog outside the cone, and pulling back would then appear to do nothing until
+     * that backlog unwound.
      */
     private static void steerRun(ReconDroneEntity drone, float deltaYaw, float deltaPitch) {
-        // Re-seed the ordinary look smoothing when the run hands the airframe back, so the crosshair
-        // does not sweep back to a heading the mouse asked for before the run locked its axis.
+        // When the run ends ordinary steering must seed from the current view, not its pre-run aim.
         lookSeeded = false;
         if (!chargeAimSeeded) {
             chargeAimSeeded = true;
-            // Discard any frame gap accumulated since the last run; the seed frame is a full jump.
             lastFrameNanos = 0L;
             chargeDesiredYaw = drone.getYRot();
             chargeDesiredPitch = drone.getXRot();
-            chargeAimYaw = chargeDesiredYaw;
-            chargeAimPitch = chargeDesiredPitch;
+            chargeAimYaw.reset(chargeDesiredYaw);
+            chargeAimPitch.reset(chargeDesiredPitch);
         }
 
-        chargeDesiredYaw = Mth.wrapDegrees(chargeDesiredYaw + deltaYaw);
-        chargeDesiredPitch = Mth.clamp(chargeDesiredPitch + deltaPitch, -90.0F, 90.0F);
-
-        // First order lag, frame rate independent: k is the fraction of the remaining gap closed
-        // over a frame of this length.
-        double k = 1.0D - Math.exp(-frameSeconds() / CHARGE_AIM_TAU);
-        chargeAimYaw = Mth.wrapDegrees(chargeAimYaw
-                + (float) (Mth.wrapDegrees(chargeDesiredYaw - chargeAimYaw) * k));
-        chargeAimPitch += (float) ((chargeDesiredPitch - chargeAimPitch) * k);
-
-        Vec3 clamped = ReconDroneEntity.clampToCone(
-                drone.chargeAxis(),
-                ReconDroneEntity.viewVector(chargeAimYaw, chargeAimPitch),
+        Vec3 axis = drone.chargeAxis();
+        Vec3 requested = ReconDroneEntity.clampToCone(axis,
+                ReconDroneEntity.viewVector(
+                        Mth.wrapDegrees(chargeDesiredYaw + deltaYaw * (float) CHARGE_AIM_GAIN),
+                        Mth.clamp(chargeDesiredPitch + deltaPitch * (float) CHARGE_AIM_GAIN,
+                                -90.0F, 90.0F)),
                 ReconDroneEntity.CHARGE_CONE);
-        chargeAimYaw = ReconDroneEntity.yawOf(clamped);
-        chargeAimPitch = ReconDroneEntity.pitchOf(clamped);
+        chargeDesiredYaw = ReconDroneEntity.yawOf(requested);
+        chargeDesiredPitch = ReconDroneEntity.pitchOf(requested);
 
-        drone.setYRot(chargeAimYaw);
-        drone.setXRot(chargeAimPitch);
-        drone.yRotO = chargeAimYaw;
-        drone.xRotO = chargeAimPitch;
+        double dt = frameSeconds();
+        double yaw = chargeAimYaw.advance(chargeDesiredYaw, dt, CHARGE_AIM_TAU);
+        double pitch = chargeAimPitch.advance(chargeDesiredPitch, dt, CHARGE_AIM_TAU);
+
+        // The target is already inside the cone, so this only catches the smoother still converging
+        // from wherever the previous frame left it. Writing the result back keeps the internal state
+        // and the crosshair on the same number.
+        Vec3 clamped = ReconDroneEntity.clampToCone(axis,
+                ReconDroneEntity.viewVector((float) yaw, (float) pitch),
+                ReconDroneEntity.CHARGE_CONE);
+        yaw = ReconDroneEntity.yawOf(clamped);
+        pitch = ReconDroneEntity.pitchOf(clamped);
+        chargeAimYaw.setAngle(yaw);
+        chargeAimPitch.setAngle(pitch);
+
+        drone.setYRot((float) yaw);
+        drone.setXRot((float) pitch);
+        drone.yRotO = (float) yaw;
+        drone.xRotO = (float) pitch;
+    }
+
+    /**
+     * Vanilla's F8 cinematic-camera smoother, lifted from
+     * {@code net.minecraft.util.SmoothDouble#getNewDeltaValue} with two changes: the state is an
+     * absolute angle rather than an accumulated delta, so the caller can clamp the target into a
+     * cone each frame; and vanilla's sensitivity-derived {@code deltaTime} is written explicitly as
+     * a time constant, so the feel can be tuned without touching the player's mouse settings.
+     *
+     * <p>The shape is what matters. The rate is blended halfway toward the remaining gap, and the
+     * previous rate is blended into it, so motion starts at about half speed and accelerates into
+     * the requested rate instead of jumping to it. Because it integrates a rate rather than chasing
+     * a position, the steady-state output equals the input exactly - there is no sensitivity loss
+     * to pay for the smoothing.
+     *
+     * <p>For reference, vanilla's own equivalent time constant is {@code 1 / d4} where
+     * {@code d4 = ((sensitivity * 0.6 + 0.2) ^ 3) * 8}, which works out to between roughly 0.24
+     * seconds at maximum sensitivity and 2.9 seconds at minimum. The charge ships at 0.30, a little
+     * heavier than vanilla's most responsive end.
+     */
+    private static final class CinematicAim {
+        private double target;
+        private double delivered;
+        private double lastRate;
+
+        void reset(double angle) {
+            this.target = angle;
+            this.delivered = angle;
+            this.lastRate = 0.0D;
+        }
+
+        /** 外部把夹过的值写回，免得内部状态继续往锥外走。 */
+        void setAngle(double angle) {
+            this.delivered = angle;
+        }
+
+        double advance(double desired, double dt, double tau) {
+            this.target = desired;
+            double gap = this.target - this.delivered;
+            double rate = 0.5D * this.lastRate + 0.5D * gap;
+            double sign = Math.signum(gap);
+            if (sign * gap > sign * this.lastRate) {
+                gap = rate;
+            }
+            this.lastRate = rate;
+            // Cap the per-frame fraction below one. With a small tau and a dropped frame, stepping
+            // the whole gap in one go would overshoot the target and read as a wobble.
+            this.delivered += gap * Math.min(0.5D, dt / tau);
+            return this.delivered;
+        }
     }
 
     /**

@@ -4,5 +4,16 @@
     "sounds": [
       { "name": "watchcraft:tinnitus", "stream": false }
     ]
+  },
+  "drone_motor": {
+    "sounds": [
+      { "name": "watchcraft:drone_motor", "stream": false }
+    ]
+  },
+  "drone_boom": {
+    "subtitle": "subtitles.watchcraft.drone_boom",
+    "sounds": [
+      { "name": "watchcraft:drone_boom", "stream": false }
+    ]
   }
 }

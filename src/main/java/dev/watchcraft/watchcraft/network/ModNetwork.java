@@ -1,6 +1,5 @@
 package dev.watchcraft.watchcraft.network;
 
-import dev.watchcraft.watchcraft.Watchcraft;
 import dev.watchcraft.watchcraft.entity.ReconDroneEntity;
 import dev.watchcraft.watchcraft.registry.ModItems;
 import dev.watchcraft.watchcraft.server.DroneSettings;
@@ -231,31 +230,29 @@ public final class ModNetwork {
         if (!Double.isFinite(target.x) || !Double.isFinite(target.y) || !Double.isFinite(target.z)) {
             return;
         }
+        // On a charge the server owns the position; the client's reported position is discarded.
+        // Do NOT run the ordinary MAX_STEP test against it first: the server flies 1.45 blocks/tick,
+        // while the client chases a delayed position echo. A few ticks of network latency can put
+        // those two copies more than 1.8 blocks apart, dropping legitimate steering packets and
+        // making small corrections land in jerks. Ownership, finite coordinates and the one-packet-
+        // per-tick limit have already been checked. steerCharge validates the angles and clamps
+        // them to the server's cone. The leash is skipped for the committed run as before.
+        if (drone.isCharging()) {
+            drone.setRoll(payload.roll());
+            drone.steerCharge(player, payload.yRot(), payload.xRot());
+            return;
+        }
+
+        // In ordinary flight the client does own movement, so keep the per-packet speed and
+        // block-collision checks exactly as before. Only the charge skips this position check.
         Vec3 from = drone.position();
         double stepSqr = from.distanceToSqr(target);
         if (stepSqr > ReconDroneEntity.MAX_STEP * ReconDroneEntity.MAX_STEP) {
             return;
         }
 
-        // Purely cosmetic, so it is taken before the path splits and applies whether the pilot is
-        // flying the airframe or riding a committed run. Folded into 0..360 here rather than trusted,
-        // because the number in the packet is chosen by the client.
+        // Cosmetic roll is only applied after ordinary flight passes its movement checks.
         drone.setRoll(payload.roll());
-
-        // Mid run the airframe belongs to the server, which owns the position and flies the line
-        // itself. The packet is still worth accepting, because it carries the one thing the pilot
-        // does still control - the aim - and that is bent onto the run's cone before it is applied.
-        // Writing the reported position as well would drag the drone back out of the line every
-        // tick, since the pilot's copy of the drone is chasing the server's rather than leading it.
-        //
-        // The leash check is skipped here on purpose too. A run covers far more ground than the
-        // link reaches, and dropping the pilot partway down a committed one-way trip would just
-        // take the camera away from the blast they lined up.
-        if (drone.isCharging()) {
-            drone.steerCharge(player, payload.yRot(), payload.xRot());
-            return;
-        }
-
         if (player.position().distanceToSqr(target)
                 > ReconDroneEntity.LINK_RANGE * ReconDroneEntity.LINK_RANGE) {
             drone.disconnectPilot();

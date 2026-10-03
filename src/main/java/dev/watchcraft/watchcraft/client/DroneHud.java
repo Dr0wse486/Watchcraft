@@ -1,5 +1,6 @@
 package dev.watchcraft.watchcraft.client;
 
+import dev.watchcraft.watchcraft.config.WatchcraftConfig;
 import dev.watchcraft.watchcraft.entity.ReconDroneEntity;
 import dev.watchcraft.watchcraft.item.DroneModules;
 import net.minecraft.client.Minecraft;
@@ -21,16 +22,24 @@ import java.util.Locale;
  */
 public final class DroneHud {
 
-    private static final int CYAN = 0xFF3BE8FF;
-    private static final int CYAN_DIM = 0x803BE8FF;
-    private static final int CYAN_FAINT = 0x303BE8FF;
+    /**
+     * HUD 主色。默认是一支冷青，由 {@code hud.accentColor} 覆盖，见 {@link #applyConfig()}。
+     *
+     * <p>三个档位其实是同一个基色的三种透明度：准星与边框用不透明的，括号用半透明的，四角
+     * 刻度用最淡的。配置里因此只存一份基色，另外两档按固定 alpha 派生 —— 否则换色系时会留下
+     * "边框变了、刻度还是青的"这种半吊子状态。
+     */
+    private static int CYAN = 0xFF3BE8FF;
+    private static int CYAN_DIM = 0x803BE8FF;
+    private static int CYAN_FAINT = 0x303BE8FF;
     private static final int AMBER = 0xFFFFB020;
     private static final int HURT = 0xFFFF5555;
     private static final int PANEL = 0x99101418;
     /** Dark backing behind the reticle dot so it survives bright skies and snow. */
     private static final int RETICLE_HALO = 0xA0101418;
-    private static final int TEXT = 0xFFD6F7FF;
-    private static final int TEXT_DIM = 0xFF7FA8B4;
+    /** 读数文字，同样由主色往白里提亮派生，换色系时才不会和边框撞色。 */
+    private static int TEXT = 0xFFD6F7FF;
+    private static int TEXT_DIM = 0xFF7FA8B4;
     /** Milky veil colour. Light and desaturated: it has to wash the picture out, not darken it. */
     private static final int HAZE = 0xAECDD8;
     /** Vignette ink. Near black but blue, so the corners cool down rather than go muddy. */
@@ -47,7 +56,79 @@ public final class DroneHud {
         return ReconDroneEntity.LINK_RANGE * 0.75D;
     }
 
+    /** HUD 主色的出厂值。同时也是 {@code hud.accentColor} 的默认值与解析失败时的兜底。 */
+    public static final int DEFAULT_ACCENT = 0x3BE8FF;
+
+    /** 是否画四行读数与底部按键条，分别由 {@code hud.showTelemetry} 与 {@code hud.showHints} 控制。 */
+    private static boolean showTelemetry = true;
+    private static boolean showHints = true;
+
     private DroneHud() {
+    }
+
+    /**
+     * 把 {@code hud} 段的配置写回上面那几个静态镜像。
+     *
+     * <p>由 {@code ModConfigEvent} 和配置界面在保存后各调一次。界面那边必须自己调，是因为
+     * {@code ConfigValue#set} 的 javadoc 写明它不派发事件 —— 光等事件是等不到刷新的，
+     * 拖完滑条画面不会动。重复调用无害，这里只是几个字段赋值。
+     */
+    public static void applyConfig() {
+        int rgb = parseHexColor(WatchcraftConfig.CLIENT.hudAccentColor.get(), DEFAULT_ACCENT);
+        CYAN = 0xFF000000 | rgb;
+        CYAN_DIM = 0x80000000 | rgb;
+        CYAN_FAINT = 0x30000000 | rgb;
+        TEXT = 0xFF000000 | lighten(rgb, 0.78D);
+        TEXT_DIM = 0xFF000000 | lighten(rgb, 0.42D);
+        showTelemetry = WatchcraftConfig.CLIENT.hudShowTelemetry.get();
+        showHints = WatchcraftConfig.CLIENT.hudShowHints.get();
+    }
+
+    /**
+     * 解析 {@code #RRGGBB}、{@code RRGGBB} 或三位的 {@code #RGB}，失败时返回 {@code fallback}。
+     *
+     * <p>故意不抛异常：这个值来自用户手写的 toml，打错一个字符不该让游戏起不来，
+     * 退回默认色比崩溃体面得多。
+     */
+    public static int parseHexColor(String text, int fallback) {
+        if (text == null) {
+            return fallback;
+        }
+        String hex = text.trim();
+        if (hex.startsWith("#")) {
+            hex = hex.substring(1);
+        }
+        if (hex.length() == 3) {
+            StringBuilder wide = new StringBuilder(6);
+            for (int i = 0; i < 3; i++) {
+                wide.append(hex.charAt(i)).append(hex.charAt(i));
+            }
+            hex = wide.toString();
+        }
+        if (hex.length() != 6) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(hex, 16) & 0xFFFFFF;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    /** 写成 {@code #RRGGBB}，供配置界面回填输入框。 */
+    public static String toHexColor(int rgb) {
+        return String.format("#%06X", rgb & 0xFFFFFF);
+    }
+
+    /** 按比例把颜色往白里提。用来从主色派生正文与次要文字色。 */
+    private static int lighten(int rgb, double amount) {
+        int r = (rgb >> 16) & 0xFF;
+        int g = (rgb >> 8) & 0xFF;
+        int b = rgb & 0xFF;
+        r = (int) Math.round(r + (0xFF - r) * amount);
+        g = (int) Math.round(g + (0xFF - g) * amount);
+        b = (int) Math.round(b + (0xFF - b) * amount);
+        return (r << 16) | (g << 8) | b;
     }
 
     public static void render(GuiGraphics graphics) {
@@ -80,9 +161,14 @@ public final class DroneHud {
         drawChargeStreaks(graphics, width, height, millis, DroneController.chargeEffectIntensity());
         drawFrame(graphics, width, height, millis);
         drawReticle(graphics, width, height);
-        drawTelemetry(graphics, minecraft.font, drone, range, millis);
-        drawHints(graphics, minecraft.font, width, height,
-                drone.hasModule(DroneModules.ATTACK) ? chargeKeys(minecraft) : null);
+        // 读数与按键条可以单独关掉：截图时留着准星和边框就够，四行数字和提示条反而碍事。
+        if (showTelemetry) {
+            drawTelemetry(graphics, minecraft.font, drone, range, millis);
+        }
+        if (showHints) {
+            drawHints(graphics, minecraft.font, width, height,
+                    drone.hasModule(DroneModules.ATTACK) ? chargeKeys(minecraft) : null);
+        }
         if (breakup >= 1.0D) {
             drawSignalLost(graphics, minecraft.font, width, height, millis);
         }

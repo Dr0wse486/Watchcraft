@@ -2,6 +2,7 @@ package dev.watchcraft.watchcraft.entity;
 
 import dev.watchcraft.watchcraft.item.DroneModules;
 import dev.watchcraft.watchcraft.registry.ModEntities;
+import dev.watchcraft.watchcraft.registry.ModSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -145,12 +146,14 @@ public class ReconDroneEntity extends Entity {
      * is why there is no pitch floor any more - aiming level now flies level rather than forcing
      * a stoop.
      *
-     * <p>Kept deliberately tight. A wide cone stops reading as a committed line and starts reading
-     * as ordinary flight with a speed boost, which defeats the point of locking the axis at all -
-     * over the length of a run even sixteen degrees is worth twenty five blocks of lateral travel,
-     * so there is plenty of room to lead a moving target without the line going slack.
+     * <p>Widened from the original sixteen degrees once the aim was given the cinematic-camera
+     * smoothing. Sixteen was chosen back when the crosshair was hard-wired to the mouse and a wide
+     * cone therefore read as "ordinary flight with a speed boost"; with the input smoothed, the
+     * envelope can be roomier without the line going slack, and the extra room is what lets the
+     * pilot actually use the smoothing to lead a target. At {@link #CHARGE_SPEED} over a full run,
+     * twenty eight degrees is worth about forty two blocks of lateral travel.
      */
-    public static double CHARGE_CONE = 16.0D;
+    public static double CHARGE_CONE = 28.0D;
     /**
      * The envelope the server enforces, deliberately wider than {@link #CHARGE_CONE}.
      *
@@ -159,7 +162,7 @@ public class ReconDroneEntity extends Entity {
      * modified client gets the wide cone at worst, which is a slightly longer nudge - not a free
      * turn.
      */
-    public static double CHARGE_CONE_SLACK = 22.0D;
+    public static double CHARGE_CONE_SLACK = 36.0D;
     /** Ticks before the warhead can be armed again. Stops a held sprint key from re-triggering. */
     public static int CHARGE_COOLDOWN_TICKS = 40;
     /** Blast radius. Three blocks covers a doorway and the room behind it. */
@@ -1018,11 +1021,13 @@ public class ReconDroneEntity extends Entity {
         this.entityData.set(DATA_CHARGING, true);
         this.setDeltaMovement(direction.normalize().scale(CHARGE_SPEED));
 
-        // Everyone nearby hears the motor spool up; the pilot hears it regardless of range,
-        // because Level#playSound treats a Player argument as someone to exclude, not to notify.
+        // A short supersonic crack rather than the rocket launch report this used to play. Played
+        // once, for everyone: the null argument to Level#playSound is the player to *exclude*, so
+        // nobody is left out, and the pilot is included because the sound engine takes its listener
+        // from the camera - which is on this drone, at zero distance. The extra playNotifySound the
+        // old code paired with it made the pilot hear the launch twice.
         this.level().playSound(null, this.getX(), this.getY(), this.getZ(),
-                SoundEvents.FIREWORK_ROCKET_LAUNCH, SoundSource.NEUTRAL, 1.6F, 0.7F);
-        pilot.playNotifySound(SoundEvents.FIREWORK_ROCKET_LAUNCH, SoundSource.NEUTRAL, 1.0F, 0.7F);
+                ModSounds.DRONE_BOOM.get(), SoundSource.NEUTRAL, 0.9F, 1.0F);
         return true;
     }
 

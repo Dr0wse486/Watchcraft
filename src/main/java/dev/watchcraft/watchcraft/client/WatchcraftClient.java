@@ -15,6 +15,7 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
 @Mod(value = Watchcraft.MOD_ID, dist = Dist.CLIENT)
@@ -28,6 +29,11 @@ public final class WatchcraftClient {
         modBus.addListener(WatchcraftClient::registerPayloads);
         modBus.addListener(WatchcraftClient::onConfigLoading);
         modBus.addListener(WatchcraftClient::onConfigReloading);
+
+        // 同一个界面既从暂停菜单进（见 ClientEvents#onScreenInit），也从模组列表的"配置"按钮进。
+        // 后者是 NeoForge 白送的：注册了这个扩展点，模组列表就会自己长出那个按钮。
+        container.registerExtensionPoint(IConfigScreenFactory.class,
+                (IConfigScreenFactory) (modContainer, parent) -> new WatchcraftConfigScreen(parent));
     }
 
     private static void onConfigLoading(ModConfigEvent.Loading event) {
@@ -41,8 +47,8 @@ public final class WatchcraftClient {
     /**
      * 客户端配置载入/热重载之后，把手感与画面参数写回各自的静态镜像。
      *
-     * <p>放在这里而不是主类里，是因为 {@link DroneController} 与 {@link DroneSignal} 都是纯客户端类，
-     * 双端共用的 {@code Watchcraft} 引用它们会在专用服务器上炸掉。
+     * <p>放在这里而不是主类里，是因为 {@link DroneController}、{@link DroneSignal} 与
+     * {@link DroneHud} 都是纯客户端类，双端共用的 {@code Watchcraft} 引用它们会在专用服务器上炸掉。
      *
      * <p>只认 CLIENT 那一份：COMMON 由 {@code Watchcraft} 处理。原因见那边的注释 ——
      * {@code ConfigTracker} 派发事件的顺序不保证 COMMON 先到，而在这里读未载入的 COMMON
@@ -53,9 +59,20 @@ public final class WatchcraftClient {
         if (!Watchcraft.MOD_ID.equals(config.getModId()) || config.getType() != ModConfig.Type.CLIENT) {
             return;
         }
+        applyClientConfig();
+    }
+
+    /**
+     * 把 CLIENT 那份配置整体刷进各个静态镜像。
+     *
+     * <p>公开是给配置界面用的：{@code ConfigValue#set} 不派发 {@code ModConfigEvent}，所以界面
+     * 自己改完值得主动调一次，否则拖完滑条要等下次重启才看得到效果。重复调用无害。
+     */
+    public static void applyClientConfig() {
         DroneController.applyConfig();
         DroneSignal.applyConfig();
         DroneShake.applyConfig();
+        DroneHud.applyConfig();
     }
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
