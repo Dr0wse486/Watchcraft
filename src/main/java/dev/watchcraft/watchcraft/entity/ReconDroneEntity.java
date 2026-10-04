@@ -189,6 +189,49 @@ public class ReconDroneEntity extends Entity {
     /** 两轮威胁扫描之间的刻数。比箱子扫描快得多 —— 怪会动。 */
     public static int ALERT_INTERVAL = 4;
 
+    // ------------------------------------------------------------------ 跟随
+
+    /** 放飞后是否默认进入跟随。 */
+    public static boolean FOLLOW_ENABLED = true;
+    /**
+     * 跟在玩家身后的水平距离（格）。
+     *
+     * <p>刻意不做成"一直在头顶"。正上方会挡住玩家抬头的视野，而且看起来不像跟随，
+     * 像被吊着 —— 目标点落在身后才有"跟着走"的感觉。
+     */
+    public static double FOLLOW_DISTANCE = 4.0D;
+    /** 相对玩家的高度（格）。天花板低时会自动压低，见 {@link #FOLLOW_CLEARANCE}。 */
+    public static double FOLLOW_HEIGHT = 4.0D;
+    /**
+     * 速度控制器的增益：离目标点每远一格，速度加多少。
+     *
+     * <p>这是跟随能不能跟上的关键。恒定速度是不行的 —— 无人机的手动飞行上限 0.24 格/刻
+     * 比玩家疾跑的约 0.28 还慢，匀速跟随必然被甩掉。改成距离驱动之后，靠近时慢悠悠地飘，
+     * 被拉开就加速追。
+     */
+    public static double FOLLOW_GAIN = 0.08D;
+    /**
+     * 跟随的最高速度（格/刻）。
+     *
+     * <p>必须高于 {@link #FLIGHT_SPEED}(0.24)，否则跟不上疾跑的玩家。0.55 约合 11 m/s，
+     * 能追上疾跑，但仍远低于 {@link #CHARGE_SPEED}(1.45)。这是平衡上的让步，不过跟随是
+     * 自动的，玩家拿不到"免费加速"。
+     */
+    public static double FOLLOW_MAX_SPEED = 0.55D;
+    /** 速度每刻朝目标值收敛的比例，0~1。跟随手感的主要旋钮。 */
+    public static double FOLLOW_ACCEL = 0.25D;
+    /**
+     * 尾随方向每刻朝玩家前进方向收敛的比例，0~1。
+     *
+     * <p>方向取"移动方向"而不是"视线方向"：取视线的话玩家一转头无人机就绕着人转，
+     * 很晕。站着不动时保持上一次的方向，所以停下来环顾四周不会让它乱跑。
+     */
+    public static double FOLLOW_TURN_SMOOTHING = 0.08D;
+    /** 离放飞者超过这个距离就直接收回（格）。这是失败检测，不是常规路径。 */
+    public static double FOLLOW_RECALL_DISTANCE = 48.0D;
+    /** 与天花板的净空（格）。玩家进洞穴时 {@link #FOLLOW_HEIGHT} 会落在岩石里。 */
+    public static double FOLLOW_CLEARANCE = 1.5D;
+
     /** Blocks per tick while piloted. Kept deliberately slow so the drone reads as a scout. */
     public static double FLIGHT_SPEED = 0.24D;
     /** How far the drone can reach when the pilot right clicks. */
@@ -406,6 +449,15 @@ public class ReconDroneEntity extends Entity {
     private static final EntityDataAccessor<Integer> DATA_STATIC_TICKS =
             SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.INT);
 
+    /**
+     * 是否正在跟随放飞者。
+     *
+     * <p>同步出去有两个用处：驾驶员的客户端要在读数里显示这个状态，而
+     * {@link #lerpTo} 那一侧的判断也需要知道位置是由谁主导的。
+     */
+    private static final EntityDataAccessor<Boolean> DATA_FOLLOWING =
+            SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.BOOLEAN);
+
     @Nullable
     private UUID ownerUUID;
     private boolean thrown;
@@ -429,6 +481,23 @@ public class ReconDroneEntity extends Entity {
     private boolean detonating;
     /** 服务端：雪花屏阶段剩余的刻数，大于 0 时机体冻结、等待销毁。 */
     private int staticTicks;
+
+    // ------------------------------------------------------------------ 跟随状态（服务端）
+
+    /**
+     * 尾随方向：一个水平单位向量，指向"玩家正在往哪边走"。
+     *
+     * <p>目标点 = 玩家位置 − 这个向量 × {@link #FOLLOW_DISTANCE}，也就是落在玩家身后。
+     * 用移动方向而不是视线方向，是为了让玩家转头看四周时无人机不跟着绕圈。
+     */
+    private Vec3 followDir = Vec3.ZERO;
+    /** 上一刻的玩家位置，用来求移动方向。 */
+    @Nullable
+    private Vec3 followAnchor;
+    /** 卡住时给目标高度加的临时偏置，让它爬过障碍。 */
+    private double followClimbBias;
+    /** 连续多少刻没走动。 */
+    private int followStuckTicks;
 
     /** Client side damage flash timer, driven by {@link #EVENT_HURT}. */
     private int hurtTime;
@@ -523,6 +592,16 @@ public class ReconDroneEntity extends Entity {
         ALERT_LINE_OF_SIGHT = common.alertLineOfSight.get();
         ALERT_INTERVAL = common.alertInterval.get();
 
+        FOLLOW_ENABLED = common.followEnabled.get();
+        FOLLOW_DISTANCE = common.followDistance.get();
+        FOLLOW_HEIGHT = common.followHeight.get();
+        FOLLOW_GAIN = common.followGain.get();
+        FOLLOW_MAX_SPEED = common.followMaxSpeed.get();
+        FOLLOW_ACCEL = common.followAccel.get();
+        FOLLOW_TURN_SMOOTHING = common.followTurnSmoothing.get();
+        FOLLOW_RECALL_DISTANCE = common.followRecallDistance.get();
+        FOLLOW_CLEARANCE = common.followClearance.get();
+
         BANK_GAIN = common.bankGain.get().floatValue();
         MAX_BANK = common.maxBank.get().floatValue();
         BANK_SMOOTHING = common.bankSmoothing.get().floatValue();
@@ -554,6 +633,7 @@ public class ReconDroneEntity extends Entity {
         builder.define(DATA_CHARGE_PITCH, 0.0F);
         builder.define(DATA_ROLL, 0.0F);
         builder.define(DATA_STATIC_TICKS, 0);
+        builder.define(DATA_FOLLOWING, false);
     }
 
     @Override
@@ -564,6 +644,8 @@ public class ReconDroneEntity extends Entity {
         this.setHealth(tag.contains("Health") ? tag.getFloat("Health") : MAX_HEALTH);
         // And it keeps whatever was bolted to it.
         this.setModules(tag.getInt("Modules"));
+        // 跟随状态跨存档保留：重启之后那架无人机应该接着跟，而不是悄悄停在半空。
+        this.setFollowing(tag.contains("Following") ? tag.getBoolean("Following") : FOLLOW_ENABLED);
         // A drone never stays linked across a reload.
         this.setPilotId(-1);
     }
@@ -576,6 +658,7 @@ public class ReconDroneEntity extends Entity {
         tag.putBoolean("Thrown", this.thrown);
         tag.putFloat("Health", this.getHealth());
         tag.putInt("Modules", this.getModules());
+        tag.putBoolean("Following", this.isFollowing());
     }
 
     // ------------------------------------------------------------------ identity
@@ -724,6 +807,44 @@ public class ReconDroneEntity extends Entity {
     /** {@return 引爆后雪花屏还剩多少刻，0 表示一切正常} */
     public int getStaticTicks() {
         return this.entityData.get(DATA_STATIC_TICKS);
+    }
+
+    // ------------------------------------------------------------------ follow
+
+    public boolean isFollowing() {
+        return this.entityData.get(DATA_FOLLOWING);
+    }
+
+    /**
+     * 设置跟随状态。
+     *
+     * <p>关掉时把速度与方向一并清干净。不清的话下一次打开会带着上一次的残余速度起步 ——
+     * 无人机停在原地时速度本来就该是零，留着只会让它在重新跟上的第一刻窜一下。
+     */
+    public void setFollowing(boolean following) {
+        if (this.isFollowing() == following) {
+            return;
+        }
+        this.entityData.set(DATA_FOLLOWING, following);
+        if (!following) {
+            this.setDeltaMovement(Vec3.ZERO);
+            this.followAnchor = null;
+            this.followClimbBias = 0.0D;
+            this.followStuckTicks = 0;
+        }
+    }
+
+    /**
+     * 切换跟随。由服务端执行，只有放飞者能改。
+     *
+     * @return 切换后的状态；调用者不是放飞者时返回当前状态、不做改动
+     */
+    public boolean toggleFollow(Player player) {
+        if (!this.isOwnedBy(player) || this.isDetonated()) {
+            return this.isFollowing();
+        }
+        this.setFollowing(!this.isFollowing());
+        return this.isFollowing();
     }
 
     /** {@return 是否处于引爆后的雪花屏阶段} */
@@ -998,6 +1119,14 @@ public class ReconDroneEntity extends Entity {
 
         if (this.thrown && pilot == null) {
             this.tickThrown();
+        } else if (this.isFollowing() && pilot == null) {
+            // 跟随只在没人驾驶时接管：驾驶员一接管，位置就归客户端主导了（见 handleMove），
+            // 两边同时写会互相抢。松开链路之后这里自然接着跟。
+            this.tickFollow(serverLevel);
+            // 距离超限会在里面直接收回，机体已经没了。后面的扫描与发布不必再跑。
+            if (this.isRemoved()) {
+                return;
+            }
         } else {
             this.setDeltaMovement(Vec3.ZERO);
         }
@@ -1095,6 +1224,154 @@ public class ReconDroneEntity extends Entity {
         if (this.throwTicks > THROW_TICKS) {
             this.thrown = false;
             this.setDeltaMovement(Vec3.ZERO);
+        }
+    }
+
+    // ------------------------------------------------------------------ follow
+
+    /**
+     * 跟随放飞者的一刻。
+     *
+     * <p>目标点是"玩家身后 {distance} 格、上方 {height} 格"，不是正头顶。正上方会挡住玩家
+     * 抬头的视野，而且看起来不像跟随，像被吊着。
+     *
+     * <p>速度不是常数，而是<b>离目标点越远越快</b>。这一点是跟随能不能成立的前提：无人机的手动
+     * 飞行上限 0.24 格/刻比玩家疾跑的约 0.28 还慢，匀速跟随必然被甩掉。改成距离驱动之后，
+     * 在玩家身边时慢悠悠地飘，被拉开就加速追。
+     *
+     * <p>锚点是<b>放飞者</b>而不是驾驶员 —— 跟随的意义就是"玩家没坐在驾驶舱里的时候它也在飞"。
+     */
+    private void tickFollow(ServerLevel level) {
+        ServerPlayer owner = this.getOwnerPlayer(level);
+        if (owner == null) {
+            // 放飞者不在线，锚点就没了。原地悬停等着，不做任何猜测。
+            this.setDeltaMovement(Vec3.ZERO);
+            this.followAnchor = null;
+            return;
+        }
+
+        // 距离超限直接收回。这不是常规路径而是失败检测：跟随时本不该拉开距离，能拉开就说
+        // 明出了事 —— 传送、鞘翅、卡在方块里、区块边界抖动。它顺带把"传送后横穿世界"
+        // 这个原本要单独处理的情况一并挡掉了。
+        if (owner.distanceToSqr(this) > FOLLOW_RECALL_DISTANCE * FOLLOW_RECALL_DISTANCE) {
+            this.recallTo(owner);
+            return;
+        }
+
+        Vec3 ownerPos = owner.position();
+        this.updateFollowDirection(owner, ownerPos);
+
+        Vec3 target = new Vec3(
+                ownerPos.x - this.followDir.x * FOLLOW_DISTANCE,
+                this.followAltitude(level, owner) + this.followClimbBias,
+                ownerPos.z - this.followDir.z * FOLLOW_DISTANCE);
+
+        Vec3 offset = target.subtract(this.position());
+        double distance = offset.length();
+        double wanted = Math.min(distance * FOLLOW_GAIN, FOLLOW_MAX_SPEED);
+        Vec3 desired = distance < 1.0E-4D ? Vec3.ZERO : offset.scale(wanted / distance);
+
+        // 速度本身也要平滑。直接赋值会让无人机在目标点附近来回抽搐 —— 控制器一帧把速度打到
+        // 目标值，下一帧误差反向，于是抖个不停。让当前速度每刻朝目标值收敛一部分就没这问题。
+        Vec3 current = this.getDeltaMovement();
+        Vec3 step = current.add(desired.subtract(current).scale(FOLLOW_ACCEL));
+        this.setDeltaMovement(step);
+
+        Vec3 before = this.position();
+        this.move(MoverType.SELF, step);
+        this.detectFollowStall(step, before);
+        this.clampToWorld(level);
+
+        // 机头看着玩家。跟随时的朝向纯粹是观感，扫描是全向的，不依赖它。
+        Vec3 toOwner = ownerPos.add(0.0D, owner.getEyeHeight() * 0.5D, 0.0D).subtract(this.position());
+        if (toOwner.lengthSqr() > 1.0E-4D) {
+            this.setYRot(yawOf(toOwner));
+            this.setXRot(pitchOf(toOwner));
+        }
+    }
+
+    /**
+     * 更新尾随方向。
+     *
+     * <p>方向取的是玩家的<b>移动方向</b>而不是<b>视线方向</b>。取视线的话玩家一转头无人机
+     * 就绕着人转，非常晕；取移动方向则只在真的走动时才调整，站着环顾四周它待在原地。
+     *
+     * <p>收敛要慢（默认每刻 8%）。跟得太紧会让无人机在玩家左右横跳时来回甩。
+     */
+    private void updateFollowDirection(ServerPlayer owner, Vec3 ownerPos) {
+        Vec3 previous = this.followAnchor;
+        this.followAnchor = ownerPos;
+
+        if (previous != null) {
+            Vec3 move = ownerPos.subtract(previous);
+            double horizontalSqr = move.x * move.x + move.z * move.z;
+            if (horizontalSqr > 1.0E-6D) {
+                double horizontal = Math.sqrt(horizontalSqr);
+                Vec3 heading = new Vec3(move.x / horizontal, 0.0D, move.z / horizontal);
+                Vec3 blended = this.followDir.lerp(heading, FOLLOW_TURN_SMOOTHING);
+                double length = blended.length();
+                // 掉头时两个方向相反，lerp 会从零点穿过去。长度塌了就保持原方向，
+                // 等下一刻再拐 —— 否则会在这里除零，或者让方向瞬间翻面。
+                if (length > 0.01D) {
+                    this.followDir = blended.scale(1.0D / length);
+                }
+            }
+        }
+
+        if (this.followDir.lengthSqr() < 1.0E-6D) {
+            // 还没动过（刚放飞）。退而用玩家的水平朝向，至少有个合理的身后。
+            Vec3 look = owner.getLookAngle();
+            double horizontalSqr = look.x * look.x + look.z * look.z;
+            this.followDir = horizontalSqr > 1.0E-6D
+                    ? new Vec3(look.x, 0.0D, look.z).scale(1.0D / Math.sqrt(horizontalSqr))
+                    : new Vec3(0.0D, 0.0D, 1.0D);
+        }
+    }
+
+    /**
+     * {@return 目标高度}
+     *
+     * <p>不是简单的 {@code owner.y + height}：玩家走进洞穴或室内时，那个高度会落在岩石里，
+     * 无人机会一头顶进顶板。所以向上探一层，把目标压到天花板之下。
+     *
+     * <p>探的是玩家<b>正上方那一列</b>，不是无人机自己那一列 —— 目标点在玩家身后几格，
+     * 但真正决定"能不能待在那儿"的是玩家头顶的空间：无人机最终要贴着玩家飞。
+     */
+    private double followAltitude(ServerLevel level, ServerPlayer owner) {
+        double wanted = owner.getY() + FOLLOW_HEIGHT;
+        int reach = (int) Math.ceil(FOLLOW_HEIGHT + FOLLOW_CLEARANCE) + 1;
+        for (int i = 1; i <= reach; i++) {
+            BlockPos probe = BlockPos.containing(owner.getX(), owner.getY() + i, owner.getZ());
+            if (level.getBlockState(probe).isSolidRender(level, probe)) {
+                return Math.min(wanted, owner.getY() + i - FOLLOW_CLEARANCE);
+            }
+        }
+        return wanted;
+    }
+
+    /**
+     * 卡住检测与脱困。
+     *
+     * <p>无人机能飞，所以脱困不需要寻路：抬高一点，绝大多数障碍就从"挡路的墙"变成了
+     * "脚下的东西"。这比 A* 便宜几个数量级，而且够用 —— 跟随的目标始终在玩家附近，
+     * 而玩家一定站在能站立的地方，两者之间不会有真正复杂的通路问题。
+     *
+     * <p>偏置是渐进的（每刻 +0.15）且有上限（{@link #FOLLOW_HEIGHT}），所以它表现为
+     * "慢慢升起来跨过去"，而不是"弹射上去"。
+     */
+    private void detectFollowStall(Vec3 step, Vec3 before) {
+        double intended = step.length();
+        double moved = this.position().distanceTo(before);
+        if (intended > 0.02D && moved < intended * 0.5D) {
+            this.followStuckTicks++;
+        } else {
+            this.followStuckTicks = Math.max(0, this.followStuckTicks - 1);
+        }
+
+        if (this.followStuckTicks > 8) {
+            this.followClimbBias = Math.min(FOLLOW_HEIGHT, this.followClimbBias + 0.15D);
+        } else if (this.followStuckTicks == 0) {
+            this.followClimbBias = Math.max(0.0D, this.followClimbBias - 0.1D);
         }
     }
 
@@ -1747,7 +2024,8 @@ public class ReconDroneEntity extends Entity {
                 this.threatPercent,
                 this.threatPos == null ? 0 : this.threatPos.getX(),
                 this.threatPos == null ? 0 : this.threatPos.getY(),
-                this.threatPos == null ? 0 : this.threatPos.getZ());
+                this.threatPos == null ? 0 : this.threatPos.getZ(),
+                this.isFollowing());
         if (payload.equals(this.lastPublished)) {
             return;
         }
@@ -1846,6 +2124,9 @@ public class ReconDroneEntity extends Entity {
         drone.moveTo(spawn.x, spawn.y, spawn.z, player.getYRot(), player.getXRot());
         drone.setOwner(player);
         drone.setModules(DroneModules.of(stack));
+        // 放飞即进入跟随。这正是"不用坐进驾驶舱也能享受标记"这条需求的默认形态：
+        // 扔出去之后什么都不用管，它自己跟上来、自己侦察。
+        drone.setFollowing(FOLLOW_ENABLED);
         drone.setDeltaMovement(look.scale(THROW_SPEED).add(0.0D, 0.06D, 0.0D));
         drone.markThrown();
         level.addFreshEntity(drone);

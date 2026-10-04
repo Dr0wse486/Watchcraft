@@ -26,12 +26,15 @@
   "key.watchcraft.recall": "回收无人机",
   "key.watchcraft.roll": "滚筒（按住持续旋转）",
   "key.watchcraft.detonate": "引爆无人机",
+  "key.watchcraft.follow": "切换跟随",
 
   "message.watchcraft.no_drone": "附近没有属于你的空闲无人机",
   "message.watchcraft.busy": "该无人机正在被其他玩家操控",
   "message.watchcraft.no_item": "背包里没有可投出的无人机",
   "message.watchcraft.limit": "你已经有无人机在外面了",
   "message.watchcraft.recalled": "无人机已回收",
+  "message.watchcraft.follow_on": "无人机开始跟随",
+  "message.watchcraft.follow_off": "无人机停止跟随，原地悬停",
   "message.watchcraft.recalled_dimension": "你换了维度，无人机已自动收回",
   "message.watchcraft.nothing_to_recall": "没有可回收的无人机",
   "message.watchcraft.linked": "无人机链路已接入",
@@ -45,6 +48,7 @@
   "hud.watchcraft.health": "机体",
   "hud.watchcraft.chests": "箱子",
   "hud.watchcraft.alert": "警戒",
+  "hud.watchcraft.following": "跟随中",
   "hud.watchcraft.signal_lost": "信号丢失",
 
   "hud.watchcraft.move": "飞行",

@@ -28,9 +28,11 @@ import java.util.List;
  * @param threatX       最近威胁的坐标；{@link #threatPercent} 为 0 时无意义
  * @param threatY       同上
  * @param threatZ       同上
+ * @param following     无人机此刻是否在跟随放飞者，供屏幕角落那行状态显示
  */
 public record DroneScanPayload(List<BlockPos> chests, int threatPercent,
-                               int threatX, int threatY, int threatZ) implements CustomPacketPayload {
+                               int threatX, int threatY, int threatZ,
+                               boolean following) implements CustomPacketPayload {
 
     /** 没有威胁时 {@link #threatPercent} 的取值。 */
     public static final int NO_THREAT = 0;
@@ -45,6 +47,7 @@ public record DroneScanPayload(List<BlockPos> chests, int threatPercent,
             ByteBufCodecs.VAR_INT, DroneScanPayload::threatX,
             ByteBufCodecs.VAR_INT, DroneScanPayload::threatY,
             ByteBufCodecs.VAR_INT, DroneScanPayload::threatZ,
+            ByteBufCodecs.BOOL, DroneScanPayload::following,
             DroneScanPayload::new);
 
     /**
@@ -55,7 +58,7 @@ public record DroneScanPayload(List<BlockPos> chests, int threatPercent,
      * 发一条来纠正它。
      */
     public static DroneScanPayload empty() {
-        return new DroneScanPayload(List.of(), NO_THREAT, 0, 0, 0);
+        return new DroneScanPayload(List.of(), NO_THREAT, 0, 0, 0, false);
     }
 
     public boolean hasThreat() {

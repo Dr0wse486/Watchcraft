@@ -78,6 +78,16 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.BooleanValue alertLineOfSight;
         public final ModConfigSpec.IntValue alertInterval;
 
+        public final ModConfigSpec.BooleanValue followEnabled;
+        public final ModConfigSpec.DoubleValue followDistance;
+        public final ModConfigSpec.DoubleValue followHeight;
+        public final ModConfigSpec.DoubleValue followGain;
+        public final ModConfigSpec.DoubleValue followMaxSpeed;
+        public final ModConfigSpec.DoubleValue followAccel;
+        public final ModConfigSpec.DoubleValue followTurnSmoothing;
+        public final ModConfigSpec.DoubleValue followRecallDistance;
+        public final ModConfigSpec.DoubleValue followClearance;
+
         public final ModConfigSpec.DoubleValue bankGain;
         public final ModConfigSpec.DoubleValue maxBank;
         public final ModConfigSpec.DoubleValue bankSmoothing;
@@ -222,6 +232,48 @@ public final class WatchcraftConfig {
             alertInterval = builder
                     .comment("两轮威胁扫描之间的刻数，比箱子扫描快得多 —— 怪会动")
                     .defineInRange("interval", 4, 1, 200);
+            builder.pop();
+
+            builder.comment("跟随：无人机自己在放飞者身后飞，一边跟着走一边侦察。"
+                    + "这是「不用坐进驾驶舱也能享受标记」这条需求的落点 —— 无人机是个哨兵，"
+                    + "不是一台要人开的载具。驾驶员接管时自动暂停，松开后恢复。").push("follow");
+            followEnabled = builder
+                    .comment("放飞后是否默认进入跟随。关掉则无人机停在原地当固定哨兵")
+                    .define("enabled", true);
+            followDistance = builder
+                    .comment("跟在玩家身后的水平距离（格）。刻意不做成「一直在头顶」 —— "
+                            + "那样会挡住玩家的视野，而且看起来不像在跟随，像在吊着")
+                    .defineInRange("distance", 4.0D, 1.0D, 24.0D);
+            followHeight = builder
+                    .comment("相对玩家的高度（格）。天花板低时会自动压低，见 clearance")
+                    .defineInRange("height", 4.0D, 1.0D, 24.0D);
+            followGain = builder
+                    .comment("速度控制器的增益：离目标点每远一格，速度加多少（格/刻/格）。"
+                            + "这条曲线是跟随能不能跟上的关键 —— 恒定速度不行，"
+                            + "因为无人机的手动飞行上限 0.24 比玩家疾跑的 0.28 还慢")
+                    .defineInRange("gain", 0.08D, 0.01D, 1.0D);
+            followMaxSpeed = builder
+                    .comment("跟随的最高速度（格/刻）。必须高于 flightSpeed(0.24)，否则跟不上"
+                            + "疾跑的玩家；0.55 约合 11 m/s，能追上疾跑，但远低于冲刺的 1.45")
+                    .defineInRange("maxSpeed", 0.55D, 0.05D, 4.0D);
+            followAccel = builder
+                    .comment("速度每刻朝目标值收敛的比例，0~1。这是「跟随手感」的主要旋钮："
+                            + "调小起步与刹车都更柔，调大更跟手但会有顿挫")
+                    .defineInRange("accel", 0.25D, 0.01D, 1.0D);
+            followTurnSmoothing = builder
+                    .comment("尾随方向每刻朝玩家的前进方向收敛的比例，0~1。"
+                            + "方向取的是「移动方向」而不是「视线方向」—— 取视线的话玩家一转头"
+                            + "无人机就绕着人转，很晕")
+                    .defineInRange("turnSmoothing", 0.08D, 0.005D, 1.0D);
+            followRecallDistance = builder
+                    .comment("离放飞者超过这个距离就直接收回（格）。这不是常规路径而是失败检测："
+                            + "跟随时本不该拉开距离，能拉开就说明出了事 —— 传送、鞘翅、"
+                            + "卡在方块里、区块边界抖动。它顺带把「传送后横穿世界」也一并挡掉了")
+                    .defineInRange("recallDistance", 48.0D, 8.0D, 256.0D);
+            followClearance = builder
+                    .comment("与天花板的净空（格）。玩家走进洞穴或室内时，height 那个高度会落在"
+                            + "岩石里，所以要向上探一层顶，把目标高度压到天花板之下")
+                    .defineInRange("clearance", 1.5D, 0.5D, 8.0D);
             builder.pop();
 
             builder.comment("转弯倾斜（机身与镜头共用）").push("bank");

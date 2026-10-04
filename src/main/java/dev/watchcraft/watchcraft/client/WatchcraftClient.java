@@ -100,6 +100,7 @@ public final class WatchcraftClient {
         event.register(KeyMappings.RECALL);
         event.register(KeyMappings.ROLL);
         event.register(KeyMappings.DETONATE);
+        event.register(KeyMappings.FOLLOW);
     }
 
     private static void registerScreens(RegisterMenuScreensEvent event) {

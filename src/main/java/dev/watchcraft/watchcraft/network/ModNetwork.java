@@ -101,6 +101,7 @@ public final class ModNetwork {
             case DroneActionPayload.ACTION_INTERACT -> interact(level, player, payload.droneId());
             case DroneActionPayload.ACTION_CHARGE -> charge(level, player, payload.droneId());
             case DroneActionPayload.ACTION_DETONATE -> detonate(level, player, payload.droneId());
+            case DroneActionPayload.ACTION_FOLLOW -> toggleFollow(level, player);
             default -> {
             }
         }
@@ -204,6 +205,22 @@ public final class ModNetwork {
         }
         drone.recallTo(player);
         player.displayClientMessage(Component.translatable("message.watchcraft.recalled"), true);
+    }
+
+    /**
+     * 切换跟随。
+     *
+     * <p>和收回一样自己找无人机，不看 id。权限、是否已引爆的判定都在
+     * {@link ReconDroneEntity#toggleFollow} 里 —— 这里只负责找到那一架。
+     */
+    private static void toggleFollow(ServerLevel level, ServerPlayer player) {
+        ReconDroneEntity drone = ReconDroneEntity.findDeployed(player);
+        if (drone == null) {
+            return;
+        }
+        boolean following = drone.toggleFollow(player);
+        player.displayClientMessage(Component.translatable(
+                following ? "message.watchcraft.follow_on" : "message.watchcraft.follow_off"), true);
     }
 
     private static void handleMove(DroneMovePayload payload, IPayloadContext context) {

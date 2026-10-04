@@ -26,12 +26,15 @@
   "key.watchcraft.recall": "Recall drone",
   "key.watchcraft.roll": "Roller (hold to spin)",
   "key.watchcraft.detonate": "Detonate drone",
+  "key.watchcraft.follow": "Toggle follow",
 
   "message.watchcraft.no_drone": "No idle drone of yours is within range",
   "message.watchcraft.busy": "That drone is already being piloted",
   "message.watchcraft.no_item": "You have no drone to throw",
   "message.watchcraft.limit": "You already have a drone out",
   "message.watchcraft.recalled": "Drone recalled",
+  "message.watchcraft.follow_on": "Drone is following you",
+  "message.watchcraft.follow_off": "Drone holding position",
   "message.watchcraft.recalled_dimension": "You changed dimension - your drone was recalled automatically",
   "message.watchcraft.nothing_to_recall": "You have no drone to recall",
   "message.watchcraft.linked": "Drone link established",
@@ -45,6 +48,7 @@
   "hud.watchcraft.health": "HULL",
   "hud.watchcraft.chests": "CHESTS",
   "hud.watchcraft.alert": "ALERT",
+  "hud.watchcraft.following": "FOLLOWING",
   "hud.watchcraft.signal_lost": "SIGNAL LOST",
 
   "hud.watchcraft.move": "fly",

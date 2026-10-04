@@ -68,6 +68,8 @@ public final class DroneMarkerOverlay {
     private static List<BlockPos> chests = List.of();
     private static int threatPercent;
     private static BlockPos threatPos;
+    /** 无人机此刻是否在跟随。显示在左下角那行状态里，让玩家知道按键有没有生效。 */
+    private static boolean following;
 
     /** 主视角的垂直视场角（度）。0 表示还没收到，退回读选项里的值。 */
     private static double fovDegrees;
@@ -104,6 +106,7 @@ public final class DroneMarkerOverlay {
         chests = payload.chests();
         threatPercent = payload.threatPercent();
         threatPos = payload.hasThreat() ? payload.threatPos() : null;
+        following = payload.following();
     }
 
     /** 链路断开、无人机消失时调用，把屏幕清干净。 */
@@ -111,6 +114,7 @@ public final class DroneMarkerOverlay {
         chests = List.of();
         threatPercent = DroneScanPayload.NO_THREAT;
         threatPos = null;
+        following = false;
     }
 
     /** 由 {@link ClientEvents#onComputeFov} 在主视角那一次调用。 */
@@ -152,24 +156,30 @@ public final class DroneMarkerOverlay {
     }
 
     /**
-     * 左下角的一行状态：箱子数量与警戒。
+     * 左下角的一行状态：箱子数量、警戒与跟随。
      *
      * <p>标记本身已经说明了位置，但"有几个"这个总量是看不出来的 —— 尤其是箱子在画面外、
      * 只剩边缘方向点的时候。这一行就是那份总量。
      *
      * <p>只在<b>未连线</b>时画。连线时座舱有自己的仪表盘与底部按键条，位置正好撞上，
      * 而且那时候玩家看得见无人机自己的视野，不需要这层转述。
+     *
+     * <p>跟随状态是搭在这一行里的，不单独触发它 —— 否则无人机会一直顶着一行常驻文字，
+     * 而它大部分时间都在跟随。开关的即时反馈由聊天栏那条消息负责。
      */
     private static void drawStatus(GuiGraphics graphics, Font font, int height) {
         if (DroneController.isLinked()) {
             return;
         }
-        List<String> parts = new ArrayList<>(2);
+        List<String> parts = new ArrayList<>(3);
         if (!chests.isEmpty()) {
             parts.add(Component.translatable("hud.watchcraft.chests").getString() + " ×" + chests.size());
         }
         if (threatPercent > DroneScanPayload.NO_THREAT) {
             parts.add(Component.translatable("hud.watchcraft.alert").getString());
+        }
+        if (following) {
+            parts.add(Component.translatable("hud.watchcraft.following").getString());
         }
         if (parts.isEmpty()) {
             return;
