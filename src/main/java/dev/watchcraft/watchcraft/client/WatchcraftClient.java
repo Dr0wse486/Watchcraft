@@ -2,6 +2,7 @@ package dev.watchcraft.watchcraft.client;
 
 import dev.watchcraft.watchcraft.Watchcraft;
 import dev.watchcraft.watchcraft.network.DroneLinkPayload;
+import dev.watchcraft.watchcraft.network.DroneScanPayload;
 import dev.watchcraft.watchcraft.registry.ModEntities;
 import dev.watchcraft.watchcraft.registry.ModMenus;
 import net.minecraft.resources.ResourceLocation;
@@ -73,6 +74,7 @@ public final class WatchcraftClient {
         DroneSignal.applyConfig();
         DroneShake.applyConfig();
         DroneHud.applyConfig();
+        DroneMarkerOverlay.applyConfig();
     }
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
@@ -105,10 +107,15 @@ public final class WatchcraftClient {
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        event.registrar("1").playToClient(
-                DroneLinkPayload.TYPE,
-                DroneLinkPayload.STREAM_CODEC,
-                ClientPayloadHandler::handleLink);
+        event.registrar("1")
+                .playToClient(
+                        DroneLinkPayload.TYPE,
+                        DroneLinkPayload.STREAM_CODEC,
+                        ClientPayloadHandler::handleLink)
+                .playToClient(
+                        DroneScanPayload.TYPE,
+                        DroneScanPayload.STREAM_CODEC,
+                        ClientPayloadHandler::handleScan);
     }
 
     public static ResourceLocation id(String path) {

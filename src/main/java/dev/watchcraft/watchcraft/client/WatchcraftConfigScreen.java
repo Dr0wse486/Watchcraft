@@ -64,6 +64,7 @@ public final class WatchcraftConfigScreen extends Screen {
             "watchcraft.config.tab.roll",
             "watchcraft.config.tab.detonation",
             "watchcraft.config.tab.hud",
+            "watchcraft.config.tab.recon",
     };
 
     private final Screen parent;
@@ -160,6 +161,7 @@ public final class WatchcraftConfigScreen extends Screen {
             case 2 -> buildRoll();
             case 3 -> buildDetonation();
             case 4 -> buildHud();
+            case 5 -> buildRecon();
             default -> { }
         }
         layout();
@@ -233,6 +235,23 @@ public final class WatchcraftConfigScreen extends Screen {
 
         addToggle(WatchcraftConfig.CLIENT.hudShowTelemetry, "watchcraft.config.hud.telemetry");
         addToggle(WatchcraftConfig.CLIENT.hudShowHints, "watchcraft.config.hud.hints");
+    }
+
+    /**
+     * 侦察回传这一页。
+     *
+     * <p>这里只有<b>画面</b>部分。标什么、标多远、要不要视线，那些是服务端的平衡值，
+     * 放在 COMMON 里由服务器说了算 —— 客户端能改的只有"怎么画"，和上面几页的分工一致。
+     */
+    private void buildRecon() {
+        addToggle(WatchcraftConfig.CLIENT.markerShowDistance, "watchcraft.config.marker.showDistance");
+        addToggle(WatchcraftConfig.CLIENT.markerEdgeIndicator, "watchcraft.config.marker.edgeIndicator");
+        addInt(WatchcraftConfig.CLIENT.markerMaxLabels, "watchcraft.config.marker.maxLabels", "");
+
+        addToggle(WatchcraftConfig.CLIENT.alertShowBorder, "watchcraft.config.alert.showBorder");
+        addToggle(WatchcraftConfig.CLIENT.alertShowDirection, "watchcraft.config.alert.showDirection");
+        addInt(WatchcraftConfig.CLIENT.alertPulseTicks, "watchcraft.config.alert.pulseTicks", "");
+        addDouble(WatchcraftConfig.CLIENT.alertMaxAlpha, "watchcraft.config.alert.maxAlpha", "");
     }
 
     // ------------------------------------------------------------------ 条目工厂

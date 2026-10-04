@@ -1,9 +1,11 @@
 package dev.watchcraft.watchcraft.entity;
 
 import dev.watchcraft.watchcraft.item.DroneModules;
+import dev.watchcraft.watchcraft.network.DroneScanPayload;
 import dev.watchcraft.watchcraft.registry.ModEntities;
 import dev.watchcraft.watchcraft.registry.ModSounds;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -24,6 +26,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
@@ -31,13 +35,18 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ExplosionDamageCalculator;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -109,6 +118,65 @@ public class ReconDroneEntity extends Entity {
     public static int SCAN_INTERVAL = 2;
     /** Ceiling on line-of-sight raycasts per scan, so a crowd cannot turn a sweep into a stall. */
     public static int MAX_RAYCASTS_PER_SCAN = 24;
+
+    // ------------------------------------------------------------------ 侦察回传（箱子与预警）
+
+    /**
+     * 箱子标记总开关。
+     *
+     * <p>与上面那套生物扫描是两回事，别混在一起看。生物扫描找的是 {@code Entity}，是"现在视野
+     * 里有什么"；这里找的是 {@code BlockEntity}，是"哪里有箱子"，而且结果要送到<b>放飞者</b>的
+     * 屏幕上，不管他有没有坐在无人机里。
+     *
+     * <p>结果是<b>快照</b>：每轮整体重建，箱子出范围就消失，无人机收回就清空。所以没有任何
+     * 跨会话存储，也就没有"漏清导致永久残留"这类问题。
+     */
+    public static boolean CHEST_MARKING = true;
+    /** 箱子搜索半径（格），以无人机为球心。 */
+    public static double CHEST_RANGE = 32.0D;
+    /** 两轮箱子扫描之间的刻数。箱子不会动，比生物扫描慢得多也没关系。 */
+    public static int CHEST_INTERVAL = 10;
+    /**
+     * 至少露出几个面才算数（共 6 面）。
+     *
+     * <p>用来滤掉砌进墙里的箱子。判定必须走 {@code isSolidRender}，不要用"邻居是不是箱子方块"：
+     * 箱子不是完整方块，{@code isSolidRender} 对它返回 false，所以双箱互相贴着的那一面会
+     * <b>自动算作露出</b>，不需要任何特殊处理。
+     */
+    public static int CHEST_MIN_EXPOSED_FACES = 2;
+    /** 同时最多标记几个箱子，按距离由近到远取。 */
+    public static int CHEST_MAX_MARKERS = 32;
+    /**
+     * 是否要求无人机真的看得见。
+     *
+     * <p>开启才是不透视。注意 {@link #CHEST_MIN_EXPOSED_FACES} 挡不住"隔墙看不见" —— 密闭房间
+     * 里的箱子六面都是空气，露出面判定照样通过，只有这一条射线能拦住它。
+     */
+    public static boolean CHEST_LINE_OF_SIGHT = true;
+    /** 每轮箱子扫描的视线检测上限。露出面判定是零成本预筛，所以这里只作用在少数幸存者上。 */
+    public static int CHEST_MAX_RAYCASTS = 32;
+
+    /** 敌对预警总开关。 */
+    public static boolean ALERT_ENABLED = true;
+    /** 威胁探测半径（格），以<b>放飞者</b>为圆心 —— 要保护的是玩家，不是无人机。 */
+    public static double ALERT_RANGE = 32.0D;
+    /** 威胁度从这个距离开始大于 0（格）。 */
+    public static double ALERT_WARN_DISTANCE = 24.0D;
+    /** 威胁度在这个距离达到满格（格）。 */
+    public static double ALERT_CRITICAL_DISTANCE = 6.0D;
+    /**
+     * 是否把中立生物摘出去。
+     *
+     * <p>原版的 {@code Enemy} 接口并不等于"会主动攻击玩家"：{@code EnderMan} 与
+     * {@code ZombifiedPiglin} 都通过 {@code Monster} 继承了它，而这两个平时并不动手。它们都
+     * 实现了 {@code NeutralMob}，所以那个接口正好是现成的筛子。
+     */
+    public static boolean ALERT_EXCLUDE_NEUTRAL = true;
+    /** 是否要求视线。默认关闭：怪拐过墙角正是最需要提醒的时候。 */
+    public static boolean ALERT_LINE_OF_SIGHT = false;
+    /** 两轮威胁扫描之间的刻数。比箱子扫描快得多 —— 怪会动。 */
+    public static int ALERT_INTERVAL = 4;
+
     /** Blocks per tick while piloted. Kept deliberately slow so the drone reads as a scout. */
     public static double FLIGHT_SPEED = 0.24D;
     /** How far the drone can reach when the pilot right clicks. */
@@ -366,6 +434,28 @@ public class ReconDroneEntity extends Entity {
     /** entity id -> remaining glow ticks, owned by this drone. */
     private final Map<Integer, Integer> marked = new HashMap<>();
 
+    // ------------------------------------------------------------------ 侦察回传状态（服务端）
+
+    /** 箱子扫描的倒计时。 */
+    private int chestTimer;
+    /** 威胁扫描的倒计时。 */
+    private int alertTimer;
+    /** 当前这一轮的箱子快照，已按距离由近到远排序。每轮整体重建。 */
+    private final List<BlockPos> chestSnapshot = new ArrayList<>();
+    /** 当前威胁度 0..100，0 表示没有威胁。 */
+    private int threatPercent;
+    /** 最近威胁的坐标，没有威胁时为 {@code null}。 */
+    @Nullable
+    private BlockPos threatPos;
+    /**
+     * 上一次真正发出去的内容。
+     *
+     * <p>用来把静止时的发包压到零：无人机停着、附近也没有箱子时，快照每一轮都一样，
+     * 没有理由重复推给客户端。收回或断链时会被清掉，好让下次接上能重新发一份完整的。
+     */
+    @Nullable
+    private DroneScanPayload lastPublished;
+
     public ReconDroneEntity(EntityType<?> type, Level level) {
         super(type, level);
         this.setNoGravity(true);
@@ -403,6 +493,22 @@ public class ReconDroneEntity extends Entity {
         GLOW_DURATION = common.glowDuration.get();
         SCAN_INTERVAL = common.scanInterval.get();
         MAX_RAYCASTS_PER_SCAN = common.maxRaycastsPerScan.get();
+
+        CHEST_MARKING = common.chestMarking.get();
+        CHEST_RANGE = common.chestRange.get();
+        CHEST_INTERVAL = common.chestInterval.get();
+        CHEST_MIN_EXPOSED_FACES = common.chestMinExposedFaces.get();
+        CHEST_MAX_MARKERS = common.chestMaxMarkers.get();
+        CHEST_LINE_OF_SIGHT = common.chestLineOfSight.get();
+        CHEST_MAX_RAYCASTS = common.chestMaxRaycasts.get();
+
+        ALERT_ENABLED = common.alertEnabled.get();
+        ALERT_RANGE = common.alertRange.get();
+        ALERT_WARN_DISTANCE = common.alertWarnDistance.get();
+        ALERT_CRITICAL_DISTANCE = common.alertCriticalDistance.get();
+        ALERT_EXCLUDE_NEUTRAL = common.alertExcludeNeutral.get();
+        ALERT_LINE_OF_SIGHT = common.alertLineOfSight.get();
+        ALERT_INTERVAL = common.alertInterval.get();
 
         BANK_GAIN = common.bankGain.get().floatValue();
         MAX_BANK = common.maxBank.get().floatValue();
@@ -889,6 +995,10 @@ public class ReconDroneEntity extends Entity {
         }
         this.tickMarks(serverLevel);
         this.entityData.set(DATA_MARKS, this.marked.size());
+
+        // 箱子与预警走自己的节拍，和上面那套生物扫描无关：那套找的是 Entity（会动），
+        // 这套找的是 BlockEntity（不动）与附近的敌对生物，两者的合理频率差着一个数量级。
+        this.tickRecon(serverLevel);
     }
 
     private boolean isPilotValid(ServerPlayer pilot) {
@@ -1303,6 +1413,277 @@ public class ReconDroneEntity extends Entity {
         }
     }
 
+    // ------------------------------------------------------------------ 侦察回传
+
+    /**
+     * 箱子与威胁的扫描节拍。
+     *
+     * <p>两条独立的倒计时，因为两者的合理频率差得很远：箱子是静止的，十刻一轮足够；怪会动，
+     * 四刻一轮才不至于在它已经贴到脸上时还没报出来。各自扫完就尝试发布一次，而发布本身会
+     * 比对内容，所以这里多调一次不会有任何多余的流量。
+     */
+    private void tickRecon(ServerLevel level) {
+        if (++this.chestTimer >= CHEST_INTERVAL) {
+            this.chestTimer = 0;
+            this.scanChests(level);
+            this.publishScan(level);
+        }
+        if (++this.alertTimer >= ALERT_INTERVAL) {
+            this.alertTimer = 0;
+            this.scanThreats(level);
+            this.publishScan(level);
+        }
+    }
+
+    /**
+     * 重建箱子快照。
+     *
+     * <p>三步：找候选、筛露出面、查视线。第三步只作用在第二步的幸存者上，这个顺序是有意的 ——
+     * 露出面判定是六次方块查询的零成本操作，而射线是这整件事里最贵的一环，让前者先把明显
+     * 埋在地里的那批砍掉，射线的预算就永远够用。
+     *
+     * <p>取区块用的是 {@code getChunkNow} 而不是 {@code getChunk}。这不是风格问题：
+     * {@code getChunk} 会把没加载的区块<b>加载出来</b>，等于让无人机顺带当一个区块加载器，
+     * 既是服务器负担，也是滥用的口子。前者返回 {@code null}，跳过就完事。
+     */
+    private void scanChests(ServerLevel level) {
+        this.chestSnapshot.clear();
+        if (!CHEST_MARKING) {
+            return;
+        }
+
+        BlockPos centre = this.blockPosition();
+        int originX = centre.getX() >> 4;
+        int originZ = centre.getZ() >> 4;
+        int chunkRadius = Mth.ceil(CHEST_RANGE) >> 4;
+        double rangeSqr = CHEST_RANGE * CHEST_RANGE;
+
+        List<BlockPos> candidates = new ArrayList<>();
+        for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
+            for (int dz = -chunkRadius; dz <= chunkRadius; dz++) {
+                LevelChunk chunk = level.getChunkSource().getChunkNow(originX + dx, originZ + dz);
+                if (chunk == null) {
+                    continue;
+                }
+                for (Map.Entry<BlockPos, BlockEntity> entry : chunk.getBlockEntities().entrySet()) {
+                    if (!(entry.getValue() instanceof ChestBlockEntity)) {
+                        continue;
+                    }
+                    BlockPos pos = entry.getKey();
+                    if (distanceSqr(pos, this.getX(), this.getY(), this.getZ()) > rangeSqr) {
+                        continue;
+                    }
+                    if (exposedFaces(level, pos) < CHEST_MIN_EXPOSED_FACES) {
+                        continue;
+                    }
+                    candidates.add(pos);
+                }
+            }
+        }
+        if (candidates.isEmpty()) {
+            return;
+        }
+
+        // 近的先来：名额用尽时留下的是最该看到的那些。
+        candidates.sort(Comparator.comparingDouble(
+                pos -> distanceSqr(pos, this.getX(), this.getY(), this.getZ())));
+
+        Vec3 eye = this.getEyePosition();
+        int raycasts = 0;
+        for (BlockPos pos : candidates) {
+            if (this.chestSnapshot.size() >= CHEST_MAX_MARKERS) {
+                break;
+            }
+            if (CHEST_LINE_OF_SIGHT) {
+                if (raycasts >= CHEST_MAX_RAYCASTS) {
+                    break;
+                }
+                raycasts++;
+                if (!hasLineTo(level, eye, pos)) {
+                    continue;
+                }
+            }
+            this.chestSnapshot.add(pos);
+        }
+    }
+
+    /**
+     * {@return 这个箱子露出几个面}
+     *
+     * <p>判定用 {@code isSolidRender}，不要用"邻居是不是箱子方块"。箱子不是完整方块
+     * （形状是 14/16 的 AABB），{@code isSolidRender} 对它返回 false，所以双箱互相贴着的那一面
+     * <b>自动算作露出</b> —— 用方块类型判断反而会把那一面当成被遮挡，把贴墙的双箱误判成埋在地里。
+     *
+     * <p>未加载的邻居当作挡住了。保守方向是少标几个，而不是把埋在墙里的也放进来。
+     */
+    private static int exposedFaces(Level level, BlockPos pos) {
+        int exposed = 0;
+        for (Direction direction : Direction.values()) {
+            BlockPos neighbour = pos.relative(direction);
+            if (!level.isLoaded(neighbour)) {
+                continue;
+            }
+            if (!level.getBlockState(neighbour).isSolidRender(level, neighbour)) {
+                exposed++;
+            }
+        }
+        return exposed;
+    }
+
+    /**
+     * {@return 从 {@code from} 到目标方块是否通视}
+     *
+     * <p>和 {@link #hasClearLine} 的差别在命中判定：射线瞄的就是箱子本身，所以打在目标方块上
+     * 是<b>成功</b>，不是遮挡。{@code hasClearLine} 那边要求必须 MISS，用它会把所有箱子都判掉。
+     */
+    private boolean hasLineTo(Level level, Vec3 from, BlockPos target) {
+        ClipContext context = new ClipContext(from, Vec3.atCenterOf(target),
+                ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this);
+        BlockHitResult result = level.clip(context);
+        return result.getType() == HitResult.Type.MISS || result.getBlockPos().equals(target);
+    }
+
+    private static double distanceSqr(BlockPos pos, double x, double y, double z) {
+        double dx = pos.getX() + 0.5D - x;
+        double dy = pos.getY() + 0.5D - y;
+        double dz = pos.getZ() + 0.5D - z;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    /**
+     * 重算威胁度。
+     *
+     * <p>圆心是<b>放飞者</b>而不是无人机。无人机只是个传感器，被保护的对象是玩家，所以
+     * "多近才算危险"必须按玩家和怪的距离来量。
+     *
+     * <p>只取最近的那一个驱动强度，方向也只用它。多个怪同时靠近时，最近的那个本来就决定了
+     * 玩家该先处理谁。
+     */
+    private void scanThreats(ServerLevel level) {
+        this.threatPercent = DroneScanPayload.NO_THREAT;
+        this.threatPos = null;
+        if (!ALERT_ENABLED) {
+            return;
+        }
+        ServerPlayer owner = this.getOwnerPlayer(level);
+        if (owner == null) {
+            return;
+        }
+
+        double rangeSqr = ALERT_RANGE * ALERT_RANGE;
+        List<LivingEntity> candidates = level.getEntitiesOfClass(LivingEntity.class,
+                owner.getBoundingBox().inflate(ALERT_RANGE), this::isThreat);
+
+        Vec3 eye = this.getEyePosition();
+        LivingEntity nearest = null;
+        double nearestSqr = Double.MAX_VALUE;
+        for (LivingEntity mob : candidates) {
+            double distance = mob.distanceToSqr(owner);
+            if (distance > rangeSqr || distance >= nearestSqr) {
+                continue;
+            }
+            if (ALERT_LINE_OF_SIGHT && !this.canSee(level, eye, mob)) {
+                continue;
+            }
+            nearestSqr = distance;
+            nearest = mob;
+        }
+        if (nearest == null) {
+            return;
+        }
+
+        double distance = Math.sqrt(nearestSqr);
+        double span = ALERT_WARN_DISTANCE - ALERT_CRITICAL_DISTANCE;
+        double strength;
+        if (distance >= ALERT_WARN_DISTANCE) {
+            strength = 0.0D;
+        } else if (span <= 0.0D || distance <= ALERT_CRITICAL_DISTANCE) {
+            strength = 1.0D;
+        } else {
+            strength = (ALERT_WARN_DISTANCE - distance) / span;
+        }
+
+        int percent = (int) Math.round(Mth.clamp(strength, 0.0D, 1.0D) * 100.0D);
+        if (percent <= DroneScanPayload.NO_THREAT) {
+            return;
+        }
+        this.threatPercent = percent;
+        this.threatPos = nearest.blockPosition();
+    }
+
+    /**
+     * {@return 这个生物算不算"需要预警的威胁"}
+     *
+     * <p>{@code Enemy} 是原版的敌对标记接口，但它并不等于"会主动攻击玩家"：
+     * {@code EnderMan} 与 {@code ZombifiedPiglin} 都通过 {@code Monster} 继承了它，而这两个
+     * 平时并不动手。它们都实现了 {@code NeutralMob}，所以那个接口正好是现成的筛子。
+     */
+    private boolean isThreat(LivingEntity entity) {
+        if (!entity.isAlive() || entity.isRemoved() || entity.isSpectator()) {
+            return false;
+        }
+        if (!(entity instanceof Enemy)) {
+            return false;
+        }
+        return !ALERT_EXCLUDE_NEUTRAL || !(entity instanceof NeutralMob);
+    }
+
+    /** {@return 放飞者，不在线时为 {@code null}} */
+    @Nullable
+    private ServerPlayer getOwnerPlayer(ServerLevel level) {
+        if (this.ownerUUID == null) {
+            return null;
+        }
+        MinecraftServer server = level.getServer();
+        return server == null ? null : server.getPlayerList().getPlayer(this.ownerUUID);
+    }
+
+    /**
+     * 把当前快照推给放飞者 —— 注意不是驾驶员。
+     *
+     * <p>无人机可以自己在外飞、玩家在别处做自己的事，所以这条消息既不看链路，也不看玩家在
+     * 哪个维度。唯一的收件人是"这架无人机属于谁"。
+     *
+     * <p>内容没变就不发。无人机停着、附近也没有箱子时，这条几乎不产生任何流量。
+     */
+    private void publishScan(ServerLevel level) {
+        ServerPlayer owner = this.getOwnerPlayer(level);
+        if (owner == null) {
+            return;
+        }
+        DroneScanPayload payload = new DroneScanPayload(
+                List.copyOf(this.chestSnapshot),
+                this.threatPercent,
+                this.threatPos == null ? 0 : this.threatPos.getX(),
+                this.threatPos == null ? 0 : this.threatPos.getY(),
+                this.threatPos == null ? 0 : this.threatPos.getZ());
+        if (payload.equals(this.lastPublished)) {
+            return;
+        }
+        this.lastPublished = payload;
+        PacketDistributor.sendToPlayer(owner, payload);
+    }
+
+    /**
+     * 清空快照并通知客户端。
+     *
+     * <p>无人机收回、被拾起或被销毁时调用。靠"过一会儿自然过期"是不行的 —— 那时候机体已经
+     * 不存在了，没有任何东西会再发一条来纠正客户端屏幕上的残留。
+     */
+    private void publishEmptyScan() {
+        this.chestSnapshot.clear();
+        this.threatPercent = DroneScanPayload.NO_THREAT;
+        this.threatPos = null;
+        this.lastPublished = null;
+        if (!(this.level() instanceof ServerLevel level)) {
+            return;
+        }
+        ServerPlayer owner = this.getOwnerPlayer(level);
+        if (owner != null) {
+            PacketDistributor.sendToPlayer(owner, DroneScanPayload.empty());
+        }
+    }
+
     // ------------------------------------------------------------------ interaction
 
     @Override
@@ -1337,6 +1718,10 @@ public class ReconDroneEntity extends Entity {
     }
 
     private void clearMarks() {
+        // 侦察快照跟着一起清。这两件事的收尾时机完全相同 —— 机体都要没了，屏幕上不该再留着
+        // 它生前看到的东西 —— 而箱子快照是"发出去就完了"，不像发光那样有实体状态要还回去，
+        // 所以唯一的清理动作就是把空快照推给客户端。
+        this.publishEmptyScan();
         if (!(this.level() instanceof ServerLevel serverLevel)) {
             this.marked.clear();
             return;

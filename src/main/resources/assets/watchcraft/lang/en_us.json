@@ -43,6 +43,8 @@
   "hud.watchcraft.axis_y": "Y",
   "hud.watchcraft.range": "DIST",
   "hud.watchcraft.health": "HULL",
+  "hud.watchcraft.chests": "CHESTS",
+  "hud.watchcraft.alert": "ALERT",
   "hud.watchcraft.signal_lost": "SIGNAL LOST",
 
   "hud.watchcraft.move": "fly",
@@ -109,5 +111,13 @@
   "watchcraft.config.hud.accent": "HUD accent",
   "watchcraft.config.hud.accent.tip": "Any #RRGGBB (#abc works too). Reticle, frame, readouts, speed streaks and the key strip all follow it; the dim brackets, faint ticks and text colours are derived from it.",
   "watchcraft.config.hud.telemetry": "Telemetry readout",
-  "watchcraft.config.hud.hints": "Key hint strip"
+  "watchcraft.config.hud.hints": "Key hint strip",
+  "watchcraft.config.tab.recon": "Recon",
+  "watchcraft.config.marker.showDistance": "Show distance",
+  "watchcraft.config.marker.edgeIndicator": "Off-screen arrow",
+  "watchcraft.config.marker.maxLabels": "Max labels",
+  "watchcraft.config.alert.showBorder": "Alert border",
+  "watchcraft.config.alert.showDirection": "Alert direction",
+  "watchcraft.config.alert.pulseTicks": "Alert pulse period",
+  "watchcraft.config.alert.maxAlpha": "Alert peak opacity"
 }

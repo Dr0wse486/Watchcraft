@@ -43,6 +43,8 @@
   "hud.watchcraft.axis_y": "Y轴",
   "hud.watchcraft.range": "距离",
   "hud.watchcraft.health": "机体",
+  "hud.watchcraft.chests": "箱子",
+  "hud.watchcraft.alert": "警戒",
   "hud.watchcraft.signal_lost": "信号丢失",
 
   "hud.watchcraft.move": "飞行",
@@ -109,5 +111,13 @@
   "watchcraft.config.hud.accent": "HUD 主色",
   "watchcraft.config.hud.accent.tip": "填 #RRGGBB（#abc 也行）。改完准星、边框、读数、速度流线与按键条会一起变色；半透明括号、淡刻度和文字色由它自动派生。",
   "watchcraft.config.hud.telemetry": "四行读数",
-  "watchcraft.config.hud.hints": "底部按键提示条"
+  "watchcraft.config.hud.hints": "底部按键提示条",
+  "watchcraft.config.tab.recon": "侦察",
+  "watchcraft.config.marker.showDistance": "标记显示距离",
+  "watchcraft.config.marker.edgeIndicator": "画面外方向点",
+  "watchcraft.config.marker.maxLabels": "同屏标记上限",
+  "watchcraft.config.alert.showBorder": "预警边框",
+  "watchcraft.config.alert.showDirection": "预警方向指示",
+  "watchcraft.config.alert.pulseTicks": "预警脉动周期",
+  "watchcraft.config.alert.maxAlpha": "预警最亮不透明度"
 }
