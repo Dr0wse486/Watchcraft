@@ -37,12 +37,15 @@ import net.minecraft.world.level.ExplosionDamageCalculator;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.entity.EnderChestBlockEntity;
+import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
@@ -147,12 +150,21 @@ public class ReconDroneEntity extends Entity {
     /** 同时最多标记几个箱子，按距离由近到远取。 */
     public static int CHEST_MAX_MARKERS = 32;
     /**
-     * 是否要求无人机真的看得见。
+     * 是否做视线判定。
      *
-     * <p>开启才是不透视。注意 {@link #CHEST_MIN_EXPOSED_FACES} 挡不住"隔墙看不见" —— 密闭房间
-     * 里的箱子六面都是空气，露出面判定照样通过，只有这一条射线能拦住它。
+     * <p>关掉等于纯雷达：半径内所有通过露出面判定的箱子一律标记，连射线都不打，最快。
      */
     public static boolean CHEST_LINE_OF_SIGHT = true;
+    /**
+     * 允许隔着几层方块仍然标记（0 为必须完全通视）。
+     *
+     * <p>默认 1，也就是"隔一层墙也找得到"。这个默认值是必要的而不是宽容：无人机悬停在玩家
+     * 头顶，从上方往下看，一个盖了盖子的箱子、或者屋里的箱子，射线都会先撞到别的东西 ——
+     * 完全通视会让这些最常见的摆放全都标不出来，功能基本废掉。
+     *
+     * <p>代价是它确实带来了一定程度的透视。数值越大越像雷达，按服务器需要调。
+     */
+    public static int CHEST_MAX_WALL_LAYERS = 1;
     /** 每轮箱子扫描的视线检测上限。露出面判定是零成本预筛，所以这里只作用在少数幸存者上。 */
     public static int CHEST_MAX_RAYCASTS = 32;
 
@@ -500,6 +512,7 @@ public class ReconDroneEntity extends Entity {
         CHEST_MIN_EXPOSED_FACES = common.chestMinExposedFaces.get();
         CHEST_MAX_MARKERS = common.chestMaxMarkers.get();
         CHEST_LINE_OF_SIGHT = common.chestLineOfSight.get();
+        CHEST_MAX_WALL_LAYERS = common.chestMaxWallLayers.get();
         CHEST_MAX_RAYCASTS = common.chestMaxRaycasts.get();
 
         ALERT_ENABLED = common.alertEnabled.get();
@@ -1466,7 +1479,7 @@ public class ReconDroneEntity extends Entity {
                     continue;
                 }
                 for (Map.Entry<BlockPos, BlockEntity> entry : chunk.getBlockEntities().entrySet()) {
-                    if (!(entry.getValue() instanceof ChestBlockEntity)) {
+                    if (!isMarkableContainer(entry.getValue())) {
                         continue;
                     }
                     BlockPos pos = entry.getKey();
@@ -1499,7 +1512,7 @@ public class ReconDroneEntity extends Entity {
                     break;
                 }
                 raycasts++;
-                if (!hasLineTo(level, eye, pos)) {
+                if (!hasLineTo(level, eye, pos, CHEST_MAX_WALL_LAYERS)) {
                     continue;
                 }
             }
@@ -1531,16 +1544,94 @@ public class ReconDroneEntity extends Entity {
     }
 
     /**
-     * {@return 从 {@code from} 到目标方块是否通视}
+     * {@return 这个方块实体算不算"要被标记的容器"}
      *
-     * <p>和 {@link #hasClearLine} 的差别在命中判定：射线瞄的就是箱子本身，所以打在目标方块上
-     * 是<b>成功</b>，不是遮挡。{@code hasClearLine} 那边要求必须 MISS，用它会把所有箱子都判掉。
+     * <p>三种：箱子（含陷阱箱）、末影箱、潜影盒。
+     *
+     * <p><b>不能只判 {@code ChestBlockEntity}。</b>末影箱与潜影盒都不是它的子类 ——
+     * 末影箱直接继承 {@code BlockEntity}（它没有可共享的容器界面，是按玩家区分的），
+     * 潜影盒继承 {@code RandomizableContainerBlockEntity}。所以必须逐个点名。
+     *
+     * <p>想再放宽（木桶、熔炉、漏斗等）就在这一句上加类型，它们是同一个基类下的兄弟。
      */
-    private boolean hasLineTo(Level level, Vec3 from, BlockPos target) {
-        ClipContext context = new ClipContext(from, Vec3.atCenterOf(target),
-                ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this);
-        BlockHitResult result = level.clip(context);
-        return result.getType() == HitResult.Type.MISS || result.getBlockPos().equals(target);
+    private static boolean isMarkableContainer(BlockEntity entity) {
+        return entity instanceof ChestBlockEntity
+                || entity instanceof EnderChestBlockEntity
+                || entity instanceof ShulkerBoxBlockEntity;
+    }
+
+    /**
+     * {@return 从 {@code from} 到目标方块是否在允许的遮挡层数内可见}
+     *
+     * <p>{@code maxBlockers} 是允许穿过的方块层数。0 表示必须完全通视；1 表示隔一层墙也算
+     * 看得见。之所以要有这个预算，是因为无人机悬停在玩家头顶：从上方俯视时，一个盖了盖子的
+     * 箱子、一间屋子里的箱子，射线都会先撞到别的东西。要求完全通视会把这两种最常见的摆放
+     * 全部漏掉。
+     *
+     * <p>实现上不能用一次 {@code clip} 搞定：{@code clip} 只返回第一个命中的方块，穿不过去。
+     * 也不能用 {@code BlockGetter#traverseBlocks} —— 那个是包级私有。所以这里自己做：
+     * 打一次射线，命中非目标方块就把它记进预算，然后从该方块的<b>出口</b>继续打，
+     * 直到打中目标、打空、或预算耗尽。
+     *
+     * <p>注意瞄准的是方块中心，而射线打在目标方块自己身上是<b>成功</b>而不是遮挡 ——
+     * 这正是不复用 {@link #hasClearLine} 的原因，那个要求必须 MISS。
+     */
+    private boolean hasLineTo(Level level, Vec3 from, BlockPos target, int maxBlockers) {
+        Vec3 end = Vec3.atCenterOf(target);
+        Vec3 span = end.subtract(from);
+        if (span.lengthSqr() < 1.0E-6D) {
+            return true;
+        }
+        Vec3 direction = span.normalize();
+
+        Vec3 cursor = from;
+        int blockers = 0;
+        while (blockers <= maxBlockers) {
+            ClipContext context = new ClipContext(cursor, end,
+                    ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this);
+            BlockHitResult result = level.clip(context);
+            if (result.getType() == HitResult.Type.MISS || result.getBlockPos().equals(target)) {
+                return true;
+            }
+            if (++blockers > maxBlockers) {
+                return false;
+            }
+            Vec3 next = pastBlock(level, result.getLocation(), direction, result.getBlockPos());
+            if (next == null || next.distanceToSqr(end) < 1.0E-4D) {
+                return false;
+            }
+            cursor = next;
+        }
+        return false;
+    }
+
+    /**
+     * {@return 从 {@code start} 沿 {@code direction} 穿出这个方块之后的第一个点}
+     *
+     * <p>用方块自己的碰撞形状求交，而不是"沿方向前进一格"。沿方向前进一格在斜射时是不够的 ——
+     * 方块的对角线长约 1.73 格，从角上斜着切进去、走一格还在里面，于是下一轮射线会再次命中
+     * 同一个方块，把预算白白吃掉，隔墙判定就失效了。
+     */
+    @Nullable
+    private static Vec3 pastBlock(Level level, Vec3 start, Vec3 direction, BlockPos pos) {
+        AABB box = level.getBlockState(pos)
+                .getCollisionShape(level, pos, CollisionContext.empty())
+                .bounds()
+                .move(pos)
+                .inflate(1.0E-3D);
+
+        double tx = direction.x > 0.0D ? (box.maxX - start.x) / direction.x
+                : direction.x < 0.0D ? (box.minX - start.x) / direction.x : Double.MAX_VALUE;
+        double ty = direction.y > 0.0D ? (box.maxY - start.y) / direction.y
+                : direction.y < 0.0D ? (box.minY - start.y) / direction.y : Double.MAX_VALUE;
+        double tz = direction.z > 0.0D ? (box.maxZ - start.z) / direction.z
+                : direction.z < 0.0D ? (box.minZ - start.z) / direction.z : Double.MAX_VALUE;
+
+        double t = Math.min(tx, Math.min(ty, tz));
+        if (!Double.isFinite(t) || t < 0.0D) {
+            return null;
+        }
+        return start.add(direction.scale(t + 1.0E-3D));
     }
 
     private static double distanceSqr(BlockPos pos, double x, double y, double z) {

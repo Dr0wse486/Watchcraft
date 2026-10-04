@@ -67,6 +67,7 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.IntValue chestMinExposedFaces;
         public final ModConfigSpec.IntValue chestMaxMarkers;
         public final ModConfigSpec.BooleanValue chestLineOfSight;
+        public final ModConfigSpec.IntValue chestMaxWallLayers;
         public final ModConfigSpec.IntValue chestMaxRaycasts;
 
         public final ModConfigSpec.BooleanValue alertEnabled;
@@ -182,9 +183,14 @@ public final class WatchcraftConfig {
                     .comment("同时最多标记几个箱子，按距离由近到远取。这是给仓库准备的刹车")
                     .defineInRange("maxMarkers", 32, 1, 256);
             chestLineOfSight = builder
-                    .comment("是否要求无人机真的看得见。开启才是不透视；关掉等于透视雷达，"
-                            + "隔墙标出所有箱子，多人服里慎用")
+                    .comment("是否做视线判定。关掉等于纯雷达，半径内所有箱子一律标记（最快）")
                     .define("requireLineOfSight", true);
+            chestMaxWallLayers = builder
+                    .comment("允许隔着几层方块仍然标记（0 为必须完全通视）。"
+                            + "1 表示隔一层墙也找得到 —— 这是默认值，因为无人机悬停在玩家头顶，"
+                            + "完全通视会让盖了盖子的箱子、屋里的箱子全都标不出来，功能基本废掉。"
+                            + "注意它确实带来了一定程度的透视，数值越大越像雷达，按服务器需要调")
+                    .defineInRange("maxWallLayers", 1, 0, 8);
             chestMaxRaycasts = builder
                     .comment("每轮箱子扫描的视线检测上限，防止大仓库造成卡顿。"
                             + "露出面判定是零成本预筛，所以这个上限只作用在少数幸存者上")
