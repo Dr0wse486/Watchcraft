@@ -93,6 +93,10 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.DoubleValue followTurnSmoothing;
         public final ModConfigSpec.DoubleValue followRecallDistance;
         public final ModConfigSpec.DoubleValue followClearance;
+        public final ModConfigSpec.IntValue followTrailLength;
+        public final ModConfigSpec.IntValue followPredictTicks;
+        public final ModConfigSpec.IntValue followPathRefreshTicks;
+        public final ModConfigSpec.IntValue followPathSamples;
 
         public final ModConfigSpec.DoubleValue bankGain;
         public final ModConfigSpec.DoubleValue maxBank;
@@ -293,10 +297,11 @@ public final class WatchcraftConfig {
                             + "调小起步与刹车都更柔，调大更跟手但会有顿挫")
                     .defineInRange("accel", 0.25D, 0.01D, 1.0D);
             followTurnSmoothing = builder
-                    .comment("尾随方向每刻朝玩家的前进方向收敛的比例，0~1。"
-                            + "方向取的是「移动方向」而不是「视线方向」—— 取视线的话玩家一转头"
-                            + "无人机就绕着人转，很晕")
-                    .defineInRange("turnSmoothing", 0.08D, 0.005D, 1.0D);
+                    .comment("玩家速度估算每刻的收敛比例，0~1。前瞻靠这个速度值外推，"
+                            + "所以它不能抖 —— 单帧位移里带着起步刹车的噪声，直接拿去外推会让"
+                            + "目标点一跳一跳。也别调太小，太小会让预测严重滞后，前瞻就失效了，"
+                            + "那时无人机又变回「追着屁股跑」")
+                    .defineInRange("turnSmoothing", 0.25D, 0.005D, 1.0D);
             followRecallDistance = builder
                     .comment("离放飞者超过这个距离就直接收回（格）。这不是常规路径而是失败检测："
                             + "跟随时本不该拉开距离，能拉开就说明出了事 —— 传送、鞘翅、"
@@ -306,6 +311,29 @@ public final class WatchcraftConfig {
                     .comment("与天花板的净空（格）。玩家走进洞穴或室内时，height 那个高度会落在"
                             + "岩石里，所以要向上探一层顶，把目标高度压到天花板之下")
                     .defineInRange("clearance", 1.5D, 0.5D, 8.0D);
+            builder.pop();
+
+            builder.comment("跟随的寻路 AI。核心思路是让无人机走玩家走过的路 —— "
+                    + "玩家已经用脚证明了那条路是通的，比任何实时寻路都可靠，"
+                    + "而且开阔地、拐角、洞穴三种场景自动都成立。").push("followPath");
+            followTrailLength = builder
+                    .comment("足迹缓冲保留多少个位置点。玩家只在真正移动时才留点，"
+                            + "所以 64 点在正常行走下大约是三到五秒的历史")
+                    .defineInRange("trailLength", 64, 8, 512);
+            followPredictTicks = builder
+                    .comment("前瞻多少刻。无人机瞄的是「玩家再走这么多刻之后会在哪」，"
+                            + "而不是玩家此刻在哪 —— 这是跟随显得聪明的关键，"
+                            + "没有它就会一直慢半拍地追着屁股跑")
+                    .defineInRange("predictTicks", 10, 0, 60);
+            followPathRefreshTicks = builder
+                    .comment("隔多少刻重算一次指引点。算一次要打十几条射线，"
+                            + "每刻都算没必要 —— 路径在几刻之内不会变")
+                    .defineInRange("refreshTicks", 3, 1, 40);
+            followPathSamples = builder
+                    .comment("每次重算最多打几条射线。沿着足迹从新往旧找「最远的、"
+                            + "视线可达的那个点」，射线数就是这条链的长度上限。"
+                            + "打得越多抄近路抄得越狠，也越贵")
+                    .defineInRange("samples", 12, 2, 64);
             builder.pop();
 
             builder.comment("转弯倾斜（机身与镜头共用）").push("bank");
