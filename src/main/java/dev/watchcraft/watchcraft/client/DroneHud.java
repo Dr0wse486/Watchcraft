@@ -175,8 +175,9 @@ public final class DroneHud {
             drawTelemetry(graphics, minecraft.font, drone, range, millis);
         }
         if (showHints) {
-            drawHints(graphics, minecraft.font, width, height,
-                    drone.hasModule(DroneModules.ATTACK) ? chargeKeys(minecraft) : null);
+        drawHints(graphics, minecraft.font, width, height,
+                drone.hasModule(DroneModules.ATTACK) ? chargeKeys(minecraft) : null,
+                drone.hasModule(DroneModules.SPEED));
         }
         if (breakup >= 1.0D) {
             // 没电池也会把画面糊死，但那时候说"信号丢失"是错的：信号好得很，缺的是电。
@@ -639,7 +640,8 @@ public final class DroneHud {
      * <p>The run entry is the one piece of text on the visor that is not dim cyan. It destroys the
      * drone, and it should not be discovered by accident.
      */
-    private static void drawHints(GuiGraphics graphics, Font font, int width, int height, String chargeKeys) {
+    private static void drawHints(GuiGraphics graphics, Font font, int width, int height,
+                                  String chargeKeys, boolean hasSpeedModule) {
         List<Hint> hints = new ArrayList<>();
         hints.add(new Hint("[" + key(KeyMappings.LINK) + "] " + translate("hud.watchcraft.disconnect"), TEXT_DIM));
         hints.add(new Hint("[" + key(KeyMappings.THROW) + "] " + translate("hud.watchcraft.throw"), TEXT_DIM));
@@ -648,6 +650,13 @@ public final class DroneHud {
             hints.add(new Hint("[" + chargeKeys + "] " + translate("hud.watchcraft.charge"), HURT));
             hints.add(new Hint("[" + key(KeyMappings.DETONATE) + "] "
                     + translate("hud.watchcraft.detonate"), HURT));
+        }
+        // 小冲刺只对装了速度模块的机体显示 —— 没装就没有这个键可用，画出来只会让人按了没反应。
+        // 三档配色：冷却中暗、就绪时亮、正在冲时红，这样"能不能按"不用低头看键位。
+        if (hasSpeedModule) {
+            hints.add(new Hint("[" + key(KeyMappings.DASH) + "] " + translate("hud.watchcraft.dash"),
+                    DroneController.isDashing() ? HURT
+                            : DroneController.isDashReady() ? CYAN : TEXT_DIM));
         }
         hints.add(new Hint("[WASD] " + translate("hud.watchcraft.move"), TEXT_DIM));
         hints.add(new Hint("[SPACE/SHIFT] " + translate("hud.watchcraft.altitude"), TEXT_DIM));

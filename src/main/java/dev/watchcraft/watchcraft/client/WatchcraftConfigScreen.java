@@ -170,8 +170,17 @@ public final class WatchcraftConfigScreen extends Screen {
     private void buildFlight() {
         addDouble(WatchcraftConfig.CLIENT.flightAcceleration, "watchcraft.config.flight.acceleration", "");
         addDouble(WatchcraftConfig.CLIENT.flightDeceleration, "watchcraft.config.flight.deceleration", "");
+        addDouble(WatchcraftConfig.CLIENT.flightBankSpeedLoss, "watchcraft.config.flight.bankSpeedLoss", "");
+        addDouble(WatchcraftConfig.CLIENT.flightDiveSpeedGain, "watchcraft.config.flight.diveSpeedGain", "");
         addDouble(WatchcraftConfig.CLIENT.lookGain, "watchcraft.config.look.gain", "x");
         addDouble(WatchcraftConfig.CLIENT.lookSmoothing, "watchcraft.config.look.smoothing", "s");
+
+        // 小冲刺和飞行手感放在同一页：它改的就是速度上限与视场角，和上面几条是一回事。
+        addToggle(WatchcraftConfig.CLIENT.dashEnabled, "watchcraft.config.dash.enabled");
+        addDouble(WatchcraftConfig.CLIENT.dashSpeedGain, "watchcraft.config.dash.speedGain", "x");
+        addInt(WatchcraftConfig.CLIENT.dashTicks, "watchcraft.config.dash.ticks", "");
+        addInt(WatchcraftConfig.CLIENT.dashCooldownTicks, "watchcraft.config.dash.cooldownTicks", "");
+        addDouble(WatchcraftConfig.CLIENT.dashFovGain, "watchcraft.config.dash.fovGain", "x");
     }
 
     private void buildView() {

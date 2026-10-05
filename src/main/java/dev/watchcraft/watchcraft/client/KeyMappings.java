@@ -59,6 +59,19 @@ public final class KeyMappings {
             GLFW.GLFW_KEY_H,
             CATEGORY);
 
+    /**
+     * 速度模块的小冲刺。
+     *
+     * <p>只有装了速度模块的机体才有这一下，而且必须在驾驶舱里按 —— 它是一次主动操作，
+     * 不是跟随那样的"设定"。和自爆突进（冲刺键）刻意分开：那个是单向的，这个是能反复用的。
+     */
+    public static final KeyMapping DASH = new KeyMapping(
+            "key.watchcraft.dash",
+            KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_Z,
+            CATEGORY);
+
     private KeyMappings() {
     }
 }

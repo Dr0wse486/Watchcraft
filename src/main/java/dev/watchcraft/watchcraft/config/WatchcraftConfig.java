@@ -362,6 +362,14 @@ public final class WatchcraftConfig {
 
         public final ModConfigSpec.DoubleValue flightAcceleration;
         public final ModConfigSpec.DoubleValue flightDeceleration;
+        public final ModConfigSpec.DoubleValue flightBankSpeedLoss;
+        public final ModConfigSpec.DoubleValue flightDiveSpeedGain;
+
+        public final ModConfigSpec.BooleanValue dashEnabled;
+        public final ModConfigSpec.DoubleValue dashSpeedGain;
+        public final ModConfigSpec.IntValue dashTicks;
+        public final ModConfigSpec.IntValue dashCooldownTicks;
+        public final ModConfigSpec.DoubleValue dashFovGain;
 
         public final ModConfigSpec.DoubleValue lookGain;
         public final ModConfigSpec.DoubleValue lookSmoothing;
@@ -417,6 +425,38 @@ public final class WatchcraftConfig {
             flightDeceleration = builder
                     .comment("松开方向键时的减速度（格/刻²）。越小滑行越远")
                     .defineInRange("deceleration", 0.020D, 0.0D, 2.0D);
+            flightBankSpeedLoss = builder
+                    .comment("转向压弯掉速：满倾角时速度上限乘 (1 - 这个值)。"
+                            + "0.25 即压满弯只剩七成半速度。这是「穿梭机手感」的一半 —— "
+                            + "平飞最快、压弯要付代价，玩家才会去挑航线而不是一路按着前")
+                    .defineInRange("bankSpeedLoss", 0.25D, 0.0D, 0.9D);
+            flightDiveSpeedGain = builder
+                    .comment("俯冲换速度：机头朝下时速度上限乘 (1 + 这个值 × 俯角/90)，"
+                            + "抬头则减。0.35 即垂直俯冲时快三成半、垂直爬升时慢三成半。"
+                            + "这是另一半 —— 高度变成可以花的东西，爬升是存能量、俯冲是取能量")
+                    .defineInRange("diveSpeedGain", 0.35D, 0.0D, 2.0D);
+            builder.pop();
+
+            builder.comment("速度模块的小冲刺：短促的一次前冲，不是自爆突进").push("dash");
+            dashEnabled = builder
+                    .comment("总开关。只有装了速度模块的机体才有这一下 —— 模块本来就叫「调速器」，"
+                            + "给它一个主动技能才配得上这个名字")
+                    .define("enabled", true);
+            dashSpeedGain = builder
+                    .comment("冲刺期间速度上限的倍率。1.5 即比这架机体自己的巡航上限快五成。"
+                            + "注意它是乘在巡航上限上的，所以装了速度模块的机体冲得更远")
+                    .defineInRange("speedGain", 1.5D, 1.0D, 4.0D);
+            dashTicks = builder
+                    .comment("一次冲刺持续多少刻。10 刻等于半秒，够越过一个缺口，"
+                            + "又不至于变成第二个巡航速度")
+                    .defineInRange("ticks", 10, 1, 200);
+            dashCooldownTicks = builder
+                    .comment("两次冲刺之间的冷却刻数，30 刻为 1.5 秒")
+                    .defineInRange("cooldownTicks", 30, 0, 1200);
+            dashFovGain = builder
+                    .comment("冲刺时视场角扩大的倍率。1.25 即 25%，比巡航的 1.18 更猛，"
+                            + "这样那半秒是有推背感的")
+                    .defineInRange("fovGain", 1.25D, 1.0D, 3.0D);
             builder.pop();
 
             builder.comment("鼠标转向").push("look");
