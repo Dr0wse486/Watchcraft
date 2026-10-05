@@ -61,6 +61,33 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.IntValue scanInterval;
         public final ModConfigSpec.IntValue maxRaycastsPerScan;
 
+        public final ModConfigSpec.BooleanValue chestMarking;
+        public final ModConfigSpec.DoubleValue chestRange;
+        public final ModConfigSpec.IntValue chestInterval;
+        public final ModConfigSpec.IntValue chestMinExposedFaces;
+        public final ModConfigSpec.IntValue chestMaxMarkers;
+        public final ModConfigSpec.BooleanValue chestLineOfSight;
+        public final ModConfigSpec.IntValue chestMaxWallLayers;
+        public final ModConfigSpec.IntValue chestMaxRaycasts;
+
+        public final ModConfigSpec.BooleanValue alertEnabled;
+        public final ModConfigSpec.DoubleValue alertRange;
+        public final ModConfigSpec.DoubleValue alertWarnDistance;
+        public final ModConfigSpec.DoubleValue alertCriticalDistance;
+        public final ModConfigSpec.BooleanValue alertExcludeNeutral;
+        public final ModConfigSpec.BooleanValue alertLineOfSight;
+        public final ModConfigSpec.IntValue alertInterval;
+
+        public final ModConfigSpec.BooleanValue followEnabled;
+        public final ModConfigSpec.DoubleValue followDistance;
+        public final ModConfigSpec.DoubleValue followHeight;
+        public final ModConfigSpec.DoubleValue followGain;
+        public final ModConfigSpec.DoubleValue followMaxSpeed;
+        public final ModConfigSpec.DoubleValue followAccel;
+        public final ModConfigSpec.DoubleValue followTurnSmoothing;
+        public final ModConfigSpec.DoubleValue followRecallDistance;
+        public final ModConfigSpec.DoubleValue followClearance;
+
         public final ModConfigSpec.DoubleValue bankGain;
         public final ModConfigSpec.DoubleValue maxBank;
         public final ModConfigSpec.DoubleValue bankSmoothing;
@@ -141,6 +168,112 @@ public final class WatchcraftConfig {
             maxRaycastsPerScan = builder
                     .comment("每次扫描的视线检测上限，防止人群造成卡顿")
                     .defineInRange("maxRaycastsPerScan", 24, 1, 512);
+            builder.pop();
+
+            builder.comment("箱子标记：无人机在外时，把视野内的箱子标在放飞者的屏幕上。"
+                    + "结果是一份快照而不是历史 —— 每轮重建，箱子出范围就消失，无人机收回就清空。"
+                    + "因此没有任何跨会话的存储，也不存在「过期标记」这种状态。").push("chestMarker");
+            chestMarking = builder
+                    .comment("总开关")
+                    .define("enabled", true);
+            chestRange = builder
+                    .comment("以无人机为球心的搜索半径（格）。半径 32 格覆盖 5x5 个区块，"
+                            + "只需遍历这些区块的方块实体表，代价远低于逐方块搜索")
+                    .defineInRange("range", 32.0D, 4.0D, 128.0D);
+            chestInterval = builder
+                    .comment("两轮箱子扫描之间的刻数。箱子不会动，所以比生物扫描慢得多也没关系；"
+                            + "扫太快只会在密集的仓库里反复重建同一份列表")
+                    .defineInRange("interval", 10, 2, 200);
+            chestMinExposedFaces = builder
+                    .comment("至少露出几个面才算数（共 6 面）。用来滤掉砌进墙里的箱子。"
+                            + "注意它挡不住「隔墙看不见」—— 密闭房间里的箱子六面都是空气，照样通过，"
+                            + "所以真正的不透视要靠 requireLineOfSight")
+                    .defineInRange("minExposedFaces", 2, 0, 6);
+            chestMaxMarkers = builder
+                    .comment("同时最多标记几个箱子，按距离由近到远取。这是给仓库准备的刹车")
+                    .defineInRange("maxMarkers", 32, 1, 256);
+            chestLineOfSight = builder
+                    .comment("是否做视线判定。关掉等于纯雷达，半径内所有箱子一律标记（最快）")
+                    .define("requireLineOfSight", true);
+            chestMaxWallLayers = builder
+                    .comment("允许隔着几层方块仍然标记（0 为必须完全通视）。"
+                            + "1 表示隔一层墙也找得到 —— 这是默认值，因为无人机悬停在玩家头顶，"
+                            + "完全通视会让盖了盖子的箱子、屋里的箱子全都标不出来，功能基本废掉。"
+                            + "注意它确实带来了一定程度的透视，数值越大越像雷达，按服务器需要调")
+                    .defineInRange("maxWallLayers", 1, 0, 8);
+            chestMaxRaycasts = builder
+                    .comment("每轮箱子扫描的视线检测上限，防止大仓库造成卡顿。"
+                            + "露出面判定是零成本预筛，所以这个上限只作用在少数幸存者上")
+                    .defineInRange("maxRaycastsPerScan", 32, 1, 512);
+            builder.pop();
+
+            builder.comment("敌对预警：有敌对生物接近放飞者时，在屏幕上亮起红色边框").push("alert");
+            alertEnabled = builder
+                    .comment("总开关")
+                    .define("enabled", true);
+            alertRange = builder
+                    .comment("探测半径（格），以放飞者为圆心 —— 要保护的是玩家，不是无人机")
+                    .defineInRange("range", 32.0D, 4.0D, 128.0D);
+            alertWarnDistance = builder
+                    .comment("威胁度从这个距离开始大于 0（格）")
+                    .defineInRange("warnDistance", 24.0D, 1.0D, 128.0D);
+            alertCriticalDistance = builder
+                    .comment("威胁度在这个距离达到满格（格）。应小于 warnDistance")
+                    .defineInRange("criticalDistance", 6.0D, 0.0D, 128.0D);
+            alertExcludeNeutral = builder
+                    .comment("排除中立生物。原版的 Enemy 接口把末影人与僵尸猪灵也算作敌对"
+                            + "（两者都是 Monster 的子类），但它们平时不主动攻击，"
+                            + "所以默认用 NeutralMob 把它们摘出去")
+                    .define("excludeNeutral", true);
+            alertLineOfSight = builder
+                    .comment("是否要求无人机看得见该生物。默认关闭：预警要的是「附近有危险」，"
+                            + "而怪拐过墙角正是最需要提醒的时候。开启则更严格，也更不容易被滥用")
+                    .define("requireLineOfSight", false);
+            alertInterval = builder
+                    .comment("两轮威胁扫描之间的刻数，比箱子扫描快得多 —— 怪会动")
+                    .defineInRange("interval", 4, 1, 200);
+            builder.pop();
+
+            builder.comment("跟随：无人机自己在放飞者身后飞，一边跟着走一边侦察。"
+                    + "这是「不用坐进驾驶舱也能享受标记」这条需求的落点 —— 无人机是个哨兵，"
+                    + "不是一台要人开的载具。驾驶员接管时自动暂停，松开后恢复。").push("follow");
+            followEnabled = builder
+                    .comment("放飞后是否默认进入跟随。关掉则无人机停在原地当固定哨兵")
+                    .define("enabled", true);
+            followDistance = builder
+                    .comment("跟在玩家身后的水平距离（格）。刻意不做成「一直在头顶」 —— "
+                            + "那样会挡住玩家的视野，而且看起来不像在跟随，像在吊着")
+                    .defineInRange("distance", 4.0D, 1.0D, 24.0D);
+            followHeight = builder
+                    .comment("相对玩家的高度（格）。天花板低时会自动压低，见 clearance")
+                    .defineInRange("height", 4.0D, 1.0D, 24.0D);
+            followGain = builder
+                    .comment("速度控制器的增益：离目标点每远一格，速度加多少（格/刻/格）。"
+                            + "这条曲线是跟随能不能跟上的关键 —— 恒定速度不行，"
+                            + "因为无人机的手动飞行上限 0.24 比玩家疾跑的 0.28 还慢")
+                    .defineInRange("gain", 0.08D, 0.01D, 1.0D);
+            followMaxSpeed = builder
+                    .comment("跟随的最高速度（格/刻）。必须高于 flightSpeed(0.24)，否则跟不上"
+                            + "疾跑的玩家；0.55 约合 11 m/s，能追上疾跑，但远低于冲刺的 1.45")
+                    .defineInRange("maxSpeed", 0.55D, 0.05D, 4.0D);
+            followAccel = builder
+                    .comment("速度每刻朝目标值收敛的比例，0~1。这是「跟随手感」的主要旋钮："
+                            + "调小起步与刹车都更柔，调大更跟手但会有顿挫")
+                    .defineInRange("accel", 0.25D, 0.01D, 1.0D);
+            followTurnSmoothing = builder
+                    .comment("尾随方向每刻朝玩家的前进方向收敛的比例，0~1。"
+                            + "方向取的是「移动方向」而不是「视线方向」—— 取视线的话玩家一转头"
+                            + "无人机就绕着人转，很晕")
+                    .defineInRange("turnSmoothing", 0.08D, 0.005D, 1.0D);
+            followRecallDistance = builder
+                    .comment("离放飞者超过这个距离就直接收回（格）。这不是常规路径而是失败检测："
+                            + "跟随时本不该拉开距离，能拉开就说明出了事 —— 传送、鞘翅、"
+                            + "卡在方块里、区块边界抖动。它顺带把「传送后横穿世界」也一并挡掉了")
+                    .defineInRange("recallDistance", 48.0D, 8.0D, 256.0D);
+            followClearance = builder
+                    .comment("与天花板的净空（格）。玩家走进洞穴或室内时，height 那个高度会落在"
+                            + "岩石里，所以要向上探一层顶，把目标高度压到天花板之下")
+                    .defineInRange("clearance", 1.5D, 0.5D, 8.0D);
             builder.pop();
 
             builder.comment("转弯倾斜（机身与镜头共用）").push("bank");
@@ -230,6 +363,15 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.IntValue detonationTinnitusDelayMs;
         public final ModConfigSpec.DoubleValue detonationTinnitusVolume;
         public final ModConfigSpec.DoubleValue detonationTinnitusPitch;
+
+        public final ModConfigSpec.BooleanValue markerShowDistance;
+        public final ModConfigSpec.BooleanValue markerEdgeIndicator;
+        public final ModConfigSpec.IntValue markerMaxLabels;
+
+        public final ModConfigSpec.BooleanValue alertShowBorder;
+        public final ModConfigSpec.BooleanValue alertShowDirection;
+        public final ModConfigSpec.IntValue alertPulseTicks;
+        public final ModConfigSpec.DoubleValue alertMaxAlpha;
 
         public final ModConfigSpec.ConfigValue<String> hudAccentColor;
         public final ModConfigSpec.BooleanValue hudShowTelemetry;
@@ -350,6 +492,36 @@ public final class WatchcraftConfig {
             detonationTinnitusPitch = builder
                     .comment("耳鸣音高倍率，越大越尖")
                     .defineInRange("tinnitusPitch", 1.0D, 0.5D, 2.0D);
+            builder.pop();
+
+            builder.comment("箱子标记的画面部分。标什么由服务端决定，这里只管怎么画").push("marker");
+            markerShowDistance = builder
+                    .comment("在图标下方显示到箱子的距离")
+                    .define("showDistance", true);
+            markerEdgeIndicator = builder
+                    .comment("箱子在画面外时，在屏幕边缘给一个方向点。"
+                            + "关掉则只有转过去才看得到标记")
+                    .define("edgeIndicator", true);
+            markerMaxLabels = builder
+                    .comment("同屏最多画几个标记，防止密集仓库把画面糊满")
+                    .defineInRange("maxLabels", 16, 1, 128);
+            builder.pop();
+
+            builder.comment("敌对预警的画面部分").push("alert");
+            alertShowBorder = builder
+                    .comment("是否画红色边框")
+                    .define("showBorder", true);
+            alertShowDirection = builder
+                    .comment("是否让威胁所在的那一侧更亮。关掉则是均匀的一圈，"
+                            + "只看得出「有危险」看不出「在哪边」")
+                    .define("showDirection", true);
+            alertPulseTicks = builder
+                    .comment("脉动一次多少刻，20 刻为 1 秒。脉动是它区别于原版低血红屏的地方："
+                            + "静态的红边读起来像受伤，有节奏的才读得像警报")
+                    .defineInRange("pulseTicks", 20, 4, 200);
+            alertMaxAlpha = builder
+                    .comment("满威胁度时的边框不透明度上限，0~1")
+                    .defineInRange("maxAlpha", 0.55D, 0.0D, 1.0D);
             builder.pop();
 
             builder.comment("抬头显示").push("hud");

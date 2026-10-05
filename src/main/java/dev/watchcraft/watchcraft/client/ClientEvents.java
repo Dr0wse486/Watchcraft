@@ -10,6 +10,7 @@ import net.minecraft.world.InteractionHand;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
@@ -202,10 +203,15 @@ public final class ClientEvents {
     @SubscribeEvent
     public static void onComputeFov(ViewportEvent.ComputeFov event) {
         double scale = DroneController.viewFovScale();
-        if (scale == 1.0D) {
-            return;
+        if (scale != 1.0D) {
+            event.setFOV(event.getFOV() * scale);
         }
-        event.setFOV(event.getFOV() * scale);
+        // 标记覆盖层要自己算透视投影，需要这一帧真正的视场角。只认主视角那一次：
+        // ComputeFov 每帧会因为手部渲染、传送动画等原因被调用多次，取值不同的几档，
+        // 随手抓最后一次会让屏幕上的标记乱跳。
+        if (event.usedConfiguredFov()) {
+            DroneMarkerOverlay.setFov(event.getFOV());
+        }
     }
 
     /**
@@ -266,6 +272,21 @@ public final class ClientEvents {
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {
         DroneHud.render(event.getGuiGraphics());
+        // 顺序有意：面罩先铺，标记后压。这样预警的红边框落在面罩的青色边框之上，
+        // 而箱子标记不会被仪表盘盖住 —— 两者在操控时是同时存在的。
+        DroneMarkerOverlay.render(event.getGuiGraphics());
+    }
+
+    /**
+     * 退出世界时清掉侦察快照。
+     *
+     * <p>必须显式清，不能指望服务端再发一条：那些静态字段活在 JVM 里，重新进一个世界时
+     * 它们还是上一次的值，屏幕上会凭空冒出上一个存档的箱子标记，直到服务端碰巧发现内容
+     * 有变化为止。
+     */
+    @SubscribeEvent
+    public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        DroneMarkerOverlay.clear();
     }
 
     @SubscribeEvent

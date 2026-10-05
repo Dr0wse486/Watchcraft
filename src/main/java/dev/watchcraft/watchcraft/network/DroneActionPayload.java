@@ -19,6 +19,13 @@ public record DroneActionPayload(int action, int droneId) implements CustomPacke
     public static final int ACTION_CHARGE = 5;
     /** Blow the warhead on the spot, without a run. Same module gate as {@link #ACTION_CHARGE}. */
     public static final int ACTION_DETONATE = 6;
+    /**
+     * 切换跟随。
+     *
+     * <p>不带无人机 id —— 和收回一样，服务端自己找放飞者名下的那一架。客户端并不知道
+     * 自己有没有在外飞的无人机，让它指定 id 只会多一个可能出错的地方。
+     */
+    public static final int ACTION_FOLLOW = 7;
 
     public static final CustomPacketPayload.Type<DroneActionPayload> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(Watchcraft.MOD_ID, "drone_action"));

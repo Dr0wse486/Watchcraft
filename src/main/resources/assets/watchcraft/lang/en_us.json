@@ -26,12 +26,15 @@
   "key.watchcraft.recall": "Recall drone",
   "key.watchcraft.roll": "Roller (hold to spin)",
   "key.watchcraft.detonate": "Detonate drone",
+  "key.watchcraft.follow": "Toggle follow",
 
   "message.watchcraft.no_drone": "No idle drone of yours is within range",
   "message.watchcraft.busy": "That drone is already being piloted",
   "message.watchcraft.no_item": "You have no drone to throw",
   "message.watchcraft.limit": "You already have a drone out",
   "message.watchcraft.recalled": "Drone recalled",
+  "message.watchcraft.follow_on": "Drone is following you",
+  "message.watchcraft.follow_off": "Drone holding position",
   "message.watchcraft.recalled_dimension": "You changed dimension - your drone was recalled automatically",
   "message.watchcraft.nothing_to_recall": "You have no drone to recall",
   "message.watchcraft.linked": "Drone link established",
@@ -43,6 +46,9 @@
   "hud.watchcraft.axis_y": "Y",
   "hud.watchcraft.range": "DIST",
   "hud.watchcraft.health": "HULL",
+  "hud.watchcraft.chests": "CHESTS",
+  "hud.watchcraft.alert": "ALERT",
+  "hud.watchcraft.following": "FOLLOWING",
   "hud.watchcraft.signal_lost": "SIGNAL LOST",
 
   "hud.watchcraft.move": "fly",
@@ -109,5 +115,13 @@
   "watchcraft.config.hud.accent": "HUD accent",
   "watchcraft.config.hud.accent.tip": "Any #RRGGBB (#abc works too). Reticle, frame, readouts, speed streaks and the key strip all follow it; the dim brackets, faint ticks and text colours are derived from it.",
   "watchcraft.config.hud.telemetry": "Telemetry readout",
-  "watchcraft.config.hud.hints": "Key hint strip"
+  "watchcraft.config.hud.hints": "Key hint strip",
+  "watchcraft.config.tab.recon": "Recon",
+  "watchcraft.config.marker.showDistance": "Show distance",
+  "watchcraft.config.marker.edgeIndicator": "Off-screen arrow",
+  "watchcraft.config.marker.maxLabels": "Max labels",
+  "watchcraft.config.alert.showBorder": "Alert border",
+  "watchcraft.config.alert.showDirection": "Alert direction",
+  "watchcraft.config.alert.pulseTicks": "Alert pulse period",
+  "watchcraft.config.alert.maxAlpha": "Alert peak opacity"
 }

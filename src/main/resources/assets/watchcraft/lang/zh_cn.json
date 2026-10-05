@@ -26,12 +26,15 @@
   "key.watchcraft.recall": "回收无人机",
   "key.watchcraft.roll": "滚筒（按住持续旋转）",
   "key.watchcraft.detonate": "引爆无人机",
+  "key.watchcraft.follow": "切换跟随",
 
   "message.watchcraft.no_drone": "附近没有属于你的空闲无人机",
   "message.watchcraft.busy": "该无人机正在被其他玩家操控",
   "message.watchcraft.no_item": "背包里没有可投出的无人机",
   "message.watchcraft.limit": "你已经有无人机在外面了",
   "message.watchcraft.recalled": "无人机已回收",
+  "message.watchcraft.follow_on": "无人机开始跟随",
+  "message.watchcraft.follow_off": "无人机停止跟随，原地悬停",
   "message.watchcraft.recalled_dimension": "你换了维度，无人机已自动收回",
   "message.watchcraft.nothing_to_recall": "没有可回收的无人机",
   "message.watchcraft.linked": "无人机链路已接入",
@@ -43,6 +46,9 @@
   "hud.watchcraft.axis_y": "Y轴",
   "hud.watchcraft.range": "距离",
   "hud.watchcraft.health": "机体",
+  "hud.watchcraft.chests": "箱子",
+  "hud.watchcraft.alert": "警戒",
+  "hud.watchcraft.following": "跟随中",
   "hud.watchcraft.signal_lost": "信号丢失",
 
   "hud.watchcraft.move": "飞行",
@@ -109,5 +115,13 @@
   "watchcraft.config.hud.accent": "HUD 主色",
   "watchcraft.config.hud.accent.tip": "填 #RRGGBB（#abc 也行）。改完准星、边框、读数、速度流线与按键条会一起变色；半透明括号、淡刻度和文字色由它自动派生。",
   "watchcraft.config.hud.telemetry": "四行读数",
-  "watchcraft.config.hud.hints": "底部按键提示条"
+  "watchcraft.config.hud.hints": "底部按键提示条",
+  "watchcraft.config.tab.recon": "侦察",
+  "watchcraft.config.marker.showDistance": "标记显示距离",
+  "watchcraft.config.marker.edgeIndicator": "画面外方向点",
+  "watchcraft.config.marker.maxLabels": "同屏标记上限",
+  "watchcraft.config.alert.showBorder": "预警边框",
+  "watchcraft.config.alert.showDirection": "预警方向指示",
+  "watchcraft.config.alert.pulseTicks": "预警脉动周期",
+  "watchcraft.config.alert.maxAlpha": "预警最亮不透明度"
 }

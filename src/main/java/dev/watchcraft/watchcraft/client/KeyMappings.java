@@ -46,6 +46,19 @@ public final class KeyMappings {
             GLFW.GLFW_KEY_X,
             CATEGORY);
 
+    /**
+     * 切换跟随。
+     *
+     * <p>不需要连线，也不需要看着无人机 —— 这是它和上面几个键最大的差别。玩家在挖矿、
+     * 在跑图、在做任何别的事，随手一按就能让无人机跟上来或者停在原地当固定哨兵。
+     */
+    public static final KeyMapping FOLLOW = new KeyMapping(
+            "key.watchcraft.follow",
+            KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_H,
+            CATEGORY);
+
     private KeyMappings() {
     }
 }
