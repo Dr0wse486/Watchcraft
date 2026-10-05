@@ -374,6 +374,24 @@ public final class DroneController {
             return;
         }
 
+        // 回收期间机体归服务端冻结。这边必须跟着停手：继续跑 fly() 只会移动本地那一份，
+        // 服务端那份纹丝不动，三秒后链路一断镜头就会从别处弹回去。同样不再发位移包，
+        // 免得服务端收到一堆它已经不需要的坐标。
+        if (drone.isRecalling()) {
+            drift = Vec3.ZERO;
+            holdPlayer(minecraft.player);
+            return;
+        }
+
+        // 没装电池的机体不响应操控：油门和方向盘一起断掉。syncLook 也不再调用，所以镜头
+        // 连转都转不动 —— 玩家面对的是一片雪花，而且动不了，这正是要传达的"这架机体现没用"。
+        // 想装电池就先按 V 断开链路，装电池本来就不该从驾驶座里做。
+        if (!drone.hasBattery()) {
+            drift = Vec3.ZERO;
+            holdPlayer(minecraft.player);
+            return;
+        }
+
         syncLook();
         holdPlayer(minecraft.player);
         reportBodyPosition(minecraft, minecraft.player);
@@ -520,15 +538,20 @@ public final class DroneController {
      * rather than cutting when the keys are released.
      */
     public static void tickFov() {
-        boolean charging = Minecraft.getInstance().getCameraEntity() instanceof ReconDroneEntity drone
-                && drone.isCharging();
+        ReconDroneEntity camera = Minecraft.getInstance().getCameraEntity() instanceof ReconDroneEntity drone
+                ? drone
+                : null;
+        boolean charging = camera != null && camera.isCharging();
         double chargeTarget = charging ? CHARGE_FOV_GAIN : 1.0D;
         chargeFov += (chargeTarget - chargeFov) * CHARGE_FOV_EASE;
         if (Math.abs(chargeFov - 1.0D) < 1.0E-3D) {
             chargeFov = 1.0D;
         }
 
-        double speed = isLinked() ? drift.length() / ReconDroneEntity.FLIGHT_SPEED : 0.0D;
+        // 按"当前速度占这架机体自己巡航上限的比例"算，而不是占基础巡航上限：装了速度解限模块的
+        // 机体上限更高，拿基础值当分母会在远没到顶速时就把视场角撑满。没有模块时两者相等，
+        // 所以这一改对原有手感是零影响。
+        double speed = camera != null && isLinked() ? drift.length() / camera.flightSpeed() : 0.0D;
         double speedTarget = 1.0D + SPEED_FOV_GAIN * Mth.clamp(speed, 0.0D, 1.0D);
         speedFov += (speedTarget - speedFov) * SPEED_FOV_EASE;
         if (Math.abs(speedFov - 1.0D) < 1.0E-3D) {
@@ -1133,7 +1156,12 @@ public final class DroneController {
             direction = direction.normalize();
         }
 
-        Vec3 target = direction.scale(ReconDroneEntity.FLIGHT_SPEED);
+        // The airframe's own ceiling, not the base one: a drone carrying the governor module flies
+        // faster, and the client is the side that actually flies it. The server never has to agree
+        // on this number - it only bounds a single packet by MAX_STEP, and even the boosted cruise
+        // is a quarter of that.
+        double cruise = drone.flightSpeed();
+        Vec3 target = direction.scale(cruise);
 
         // A constant acceleration rather than a fraction of the gap, so the ramp is a ramp: the
         // step is the same size on the first tick as on the last, and the speed it builds to is
@@ -1150,9 +1178,9 @@ public final class DroneController {
         // that acceleration does not buy speed, whatever the pilot holds down.
         //
         // 滚筒冲刺是唯一的例外：上限乘上 speedCapMultiplier()（冲刺时 1.15，平时 1.0）。
-        // 乘在这里而不是改 FLIGHT_SPEED，是为了让"最高速"这个事实仍然只有一个来源——
-        // 那个常量；冲刺只是它的一个倍数。
-        double cap = ReconDroneEntity.FLIGHT_SPEED * speedCapMultiplier();
+        // 乘在这里而不是改巡航上限，是为了让"最高速"这个事实仍然只有一个来源——
+        // flightSpeed()；冲刺只是它的一个倍数。
+        double cap = cruise * speedCapMultiplier();
         double speed = drift.length();
         if (speed > cap) {
             drift = drift.scale(cap / speed);

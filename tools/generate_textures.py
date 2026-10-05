@@ -274,6 +274,14 @@ CORE_HOUSING = (58, 30, 26, 255)
 CORE = (150, 34, 22, 255)
 CORE_HOT = (240, 120, 60, 255)
 
+# Batteries. Copper for the cheap pack, graphite for the good one - the two shells are far enough
+# apart in both hue and brightness that the silhouettes do not have to carry the distinction on
+# their own, which they cannot at this size.
+COPPER = (176, 100, 58, 255)
+COPPER_HI = (226, 152, 98, 255)
+GRAPHITE = (46, 50, 56, 255)
+GRAPHITE_HI = (96, 102, 112, 255)
+
 
 def _module_board(canvas: Canvas) -> None:
     """The shape both boards share: a green-black PCB with a gold edge connector."""
@@ -326,6 +334,119 @@ def build_attack_module_icon() -> Canvas:
     canvas.fill(6, 5, 4, 5, CORE)
     canvas.fill(7, 6, 2, 3, CORE_HOT)
 
+    return canvas
+
+
+def _mast(canvas: Canvas, top: int, waves: tuple[int, ...],
+          colour: tuple[int, int, int, int]) -> None:
+    """An antenna mast with a lit tip and dashes of wavefront either side of it.
+
+    Shared by both signal tiers so the pair reads as one part at two lengths. The colour is what
+    actually separates them - see the second tier's docstring for why length alone does not work.
+    """
+    canvas.fill(7, top, 2, 12 - top, CHIP)
+    canvas.set(7, top - 1, colour)
+    canvas.set(8, top - 1, colour)
+
+    # Dashes rather than arcs: at one pixel an arc is a dot, and a dot reads as dust. Stepping the
+    # dashes outward as they go down gives the same "spreading" cue with shapes that survive.
+    for index, y in enumerate(waves):
+        reach = 5 - index
+        canvas.set(7 - reach, y, colour)
+        canvas.set(8 + reach, y, colour)
+        canvas.set(7 - reach - 1, y + 1, colour)
+        canvas.set(8 + reach + 1, y + 1, colour)
+
+
+def build_signal_module_mk1_icon() -> Canvas:
+    """First signal tier: a short cyan mast with a single pair of wavefronts."""
+    canvas = Canvas(16, 16)
+    _module_board(canvas)
+    _mast(canvas, top=6, waves=(7, 9), colour=CYAN)
+    return canvas
+
+
+def build_signal_module_mk2_icon() -> Canvas:
+    """Second signal tier: the same mast, taller and in gold.
+
+    The colour is doing the work, not the height. The first version of this pair differed only in
+    where the mast topped out - two pixels - plus a thin gold band at its foot, and at icon size
+    nobody could tell them apart. Gold against cyan is legible at a glance in a crowded inventory,
+    which two pixels of length never will be. The extra wavefront and the band stay, but they are
+    reinforcement now rather than the whole difference.
+    """
+    canvas = Canvas(16, 16)
+    _module_board(canvas)
+    _mast(canvas, top=3, waves=(5, 7, 9), colour=GOLD)
+    canvas.fill(6, 11, 4, 1, GOLD)
+    return canvas
+
+
+def build_speed_module_icon() -> Canvas:
+    """The governor removal: a row of forward chevrons, in the family's cyan.
+
+    Chevrons rather than a gauge or a throttle lever, because those are three or four pixel
+    drawings that turn to mush at sixteen. Each one here is three wide and five tall, which is the
+    smallest size at which a ">" still reads as an arrow rather than as part of a zigzag.
+    """
+    canvas = Canvas(16, 16)
+    _module_board(canvas)
+
+    for x in (2, 6, 10):
+        canvas.set(x, 5, CYAN)
+        canvas.set(x + 1, 6, CYAN)
+        canvas.set(x + 2, 7, CYAN)
+        canvas.set(x + 1, 8, CYAN)
+        canvas.set(x, 9, CYAN)
+
+    return canvas
+
+
+def _battery_shell(canvas: Canvas, body: tuple[int, int, int, int],
+                   edge: tuple[int, int, int, int]) -> None:
+    """The shape both packs share: a raised terminal top and bottom around a tall shell.
+
+    Drawn from the same footprint as the modules so the whole tab reads as one kit, but as a
+    vertical cell rather than a board - a battery that looked like a circuit board would be a
+    lie about what it is.
+    """
+    canvas.fill(6, 2, 4, 1, GOLD)
+    canvas.fill(5, 3, 6, 10, body)
+    canvas.outline(5, 3, 6, 10, edge)
+    canvas.fill(6, 13, 4, 1, GOLD)
+
+
+def build_copper_battery_icon() -> Canvas:
+    """The cheap pack: a copper shell with two redstone charge marks."""
+    canvas = Canvas(16, 16)
+    _battery_shell(canvas, COPPER, COPPER_HI)
+    canvas.fill(6, 5, 4, 1, REDSTONE)
+    canvas.fill(6, 8, 4, 1, REDSTONE_HI)
+    return canvas
+
+
+def build_graphite_electrode_icon() -> Canvas:
+    """A bare graphite rod with a diamond set into it.
+
+    Deliberately *not* the shell the packs use - no gold terminals, and the diamond is the one
+    bright thing on the icon. It is an ingredient, and it should not be mistakable for a battery
+    the player can already fit.
+    """
+    canvas = Canvas(16, 16)
+    canvas.fill(5, 3, 6, 10, GRAPHITE)
+    canvas.outline(5, 3, 6, 10, GRAPHITE_HI)
+    canvas.fill(6, 1, 4, 1, GRAPHITE_HI)
+    canvas.fill(6, 13, 4, 1, GRAPHITE_HI)
+    canvas.fill(7, 6, 2, 3, CYAN)
+    return canvas
+
+
+def build_graphite_battery_icon() -> Canvas:
+    """The good pack: the same shell in graphite, with three gold charge marks."""
+    canvas = Canvas(16, 16)
+    _battery_shell(canvas, GRAPHITE, GRAPHITE_HI)
+    for y in (5, 8, 11):
+        canvas.fill(6, y, 4, 1, GOLD)
     return canvas
 
 
@@ -491,6 +612,12 @@ def main() -> None:
     write(build_chassis_icon(), "textures", "item", "drone_chassis.png")
     write(build_propeller_icon(), "textures", "item", "drone_propeller.png")
     write(build_customization_module_icon(), "textures", "item", "customization_module.png")
+    write(build_signal_module_mk1_icon(), "textures", "item", "signal_module_mk1.png")
+    write(build_signal_module_mk2_icon(), "textures", "item", "signal_module_mk2.png")
+    write(build_speed_module_icon(), "textures", "item", "speed_module.png")
+    write(build_copper_battery_icon(), "textures", "item", "copper_battery.png")
+    write(build_graphite_electrode_icon(), "textures", "item", "graphite_electrode.png")
+    write(build_graphite_battery_icon(), "textures", "item", "graphite_battery.png")
     write(build_attack_module_icon(), "textures", "item", "attack_module.png")
 
     write(build_workbench_block(), "textures", "block", "module_workbench.png")

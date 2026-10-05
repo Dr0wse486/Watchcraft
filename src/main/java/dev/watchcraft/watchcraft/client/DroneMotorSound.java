@@ -119,7 +119,9 @@ public final class DroneMotorSound extends AbstractTickableSoundInstance {
         Vec3 now = this.drone.position();
         double moved = now.distanceTo(this.lastPosition);
         this.lastPosition = now;
-        float speed = (float) Mth.clamp(moved / ReconDroneEntity.FLIGHT_SPEED, 0.0D, 1.0D);
+        // 除以这架机体自己的巡航上限，而不是基础值：装了速度解限模块的机体飞得更快，
+        // 拿基础值当分母会让它在远没到顶速时就把音量顶满。
+        float speed = (float) Mth.clamp(moved / this.drone.flightSpeed(), 0.0D, 1.0D);
 
         float targetVolume = Mth.lerp(speed, IDLE_VOLUME, CRUISE_VOLUME);
         float targetPitch = Mth.lerp(speed, IDLE_PITCH, CRUISE_PITCH);

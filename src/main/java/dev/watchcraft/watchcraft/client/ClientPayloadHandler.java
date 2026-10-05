@@ -17,6 +17,7 @@ public final class ClientPayloadHandler {
             if (payload.linked()) {
                 DroneController.link(payload.droneId());
                 notifyPlayer("message.watchcraft.linked");
+                warnIfNoBattery(payload.droneId());
             } else {
                 boolean wasLinked = DroneController.isLinked();
                 DroneController.unlink();
@@ -36,6 +37,21 @@ public final class ClientPayloadHandler {
      */
     public static void handleScan(DroneScanPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> DroneMarkerOverlay.accept(payload));
+    }
+
+    /**
+     * 接入之后如果这架机体没装电池，直接说清楚该怎么办。
+     *
+     * <p>这条提示不是锦上添花：没电池和飞太远的画面**长得一模一样**，光看画面猜不出原因，
+     * 所以这里是把"没电池"这个状态告诉玩家的唯一出口。
+     */
+    private static void warnIfNoBattery(int droneId) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level != null
+                && minecraft.level.getEntity(droneId) instanceof ReconDroneEntity drone
+                && !drone.hasBattery()) {
+            notifyPlayer("message.watchcraft.battery_needed");
+        }
     }
 
     private static void notifyPlayer(String key) {
