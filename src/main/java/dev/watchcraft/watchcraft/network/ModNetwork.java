@@ -203,8 +203,11 @@ public final class ModNetwork {
             player.displayClientMessage(Component.translatable("message.watchcraft.nothing_to_recall"), true);
             return;
         }
-        drone.recallTo(player);
-        player.displayClientMessage(Component.translatable("message.watchcraft.recalled"), true);
+        // Winding in takes a few seconds now, and the drone is frozen while it happens - so this
+        // only starts the process. The completion message is sent when it actually lands.
+        if (drone.beginRecall()) {
+            player.displayClientMessage(Component.translatable("message.watchcraft.recalling"), true);
+        }
     }
 
     /**
@@ -235,6 +238,11 @@ public final class ModNetwork {
         // 雪花屏阶段机体已经炸了，位置由服务端冻结。这时候驾驶员那侧还会继续发包，
         // 直接丢掉，否则镜头会被拖回它最后飞过的地方。
         if (drone.isDetonated()) {
+            return;
+        }
+        // 没装电池的机体不接受操控：客户端那边已经不发了，这一条是防改包 —— 位置和朝向
+        // 都不该由玩家决定。装电池走的是 shift+右键，和驾驶是两条路。
+        if (!drone.hasBattery()) {
             return;
         }
         // One packet per tick. A stock client sends exactly one; anything more is a client trying
@@ -270,8 +278,11 @@ public final class ModNetwork {
 
         // Cosmetic roll is only applied after ordinary flight passes its movement checks.
         drone.setRoll(payload.roll());
+        // The leash is the airframe's own reach, not the base one: a drone carrying signal boosters
+        // is meant to be flown farther out, and this is the only place that decides where the line
+        // actually snaps.
         if (player.position().distanceToSqr(target)
-                > ReconDroneEntity.LINK_RANGE * ReconDroneEntity.LINK_RANGE) {
+                > drone.linkRange() * drone.linkRange()) {
             drone.disconnectPilot();
             return;
         }
@@ -301,7 +312,7 @@ public final class ModNetwork {
      */
     private static void releasePlayerLink(ServerLevel level, ServerPlayer player) {
         for (ReconDroneEntity drone : level.getEntitiesOfClass(ReconDroneEntity.class,
-                player.getBoundingBox().inflate(ReconDroneEntity.LINK_RANGE * 2.0D),
+                player.getBoundingBox().inflate(ReconDroneEntity.maxLinkRange() * 2.0D),
                 candidate -> candidate.isPilotedBy(player))) {
             drone.setPilotId(-1);
         }

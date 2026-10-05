@@ -2,7 +2,11 @@ package dev.watchcraft.watchcraft.item;
 
 import dev.watchcraft.watchcraft.registry.ModDataComponents;
 import dev.watchcraft.watchcraft.registry.ModItems;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The drone's loadout, as a bit mask on the drone's item stack.
@@ -21,6 +25,31 @@ public final class DroneModules {
     public static final int CUSTOMIZATION = 1;
     /** Warhead: unlocks the charge attack. */
     public static final int ATTACK = 2;
+    /** Signal booster, first tier: thirty-two more blocks of link. */
+    public static final int SIGNAL_MK1 = 4;
+    /** Signal booster, second tier: another thirty-two. Needs {@link #SIGNAL_MK1} fitted first. */
+    public static final int SIGNAL_MK2 = 8;
+    /** Governor removal: raises the cruise ceiling to the speed module's target. */
+    public static final int SPEED = 16;
+
+    /**
+     * Every bit this build knows about.
+     *
+     * <p>Two places need the whole set rather than one flag: the entity masks what it syncs to the
+     * client, and the drone's tooltip walks the fitted bits. Both used to spell the flags out by
+     * hand, which silently drops a new module the moment one is added - so they read this instead.
+     */
+    public static final int ALL = CUSTOMIZATION | ATTACK | SIGNAL_MK1 | SIGNAL_MK2 | SPEED;
+
+    /**
+     * The same flags, in the order they should be listed.
+     *
+     * <p>Declaration order is not usable here - the constants are primitives and carry no order of
+     * their own - so the sequence is written out once and shared by the tooltip and the item
+     * lookup below. It matches the creative tab's order, so a drone's tooltip lists its modules in
+     * the same sequence the player picked them up in.
+     */
+    public static final int[] FLAGS = {CUSTOMIZATION, SIGNAL_MK1, SIGNAL_MK2, SPEED, ATTACK};
 
     private DroneModules() {
     }
@@ -63,12 +92,34 @@ public final class DroneModules {
 
     /** {@return the item that installs the given single-bit flag, or an empty stack} */
     public static ItemStack moduleStack(int flag) {
-        if (flag == CUSTOMIZATION) {
-            return new ItemStack(ModItems.CUSTOMIZATION_MODULE.get());
+        return switch (flag) {
+            case CUSTOMIZATION -> new ItemStack(ModItems.CUSTOMIZATION_MODULE.get());
+            case ATTACK -> new ItemStack(ModItems.ATTACK_MODULE.get());
+            case SIGNAL_MK1 -> new ItemStack(ModItems.SIGNAL_MODULE_MK1.get());
+            case SIGNAL_MK2 -> new ItemStack(ModItems.SIGNAL_MODULE_MK2.get());
+            case SPEED -> new ItemStack(ModItems.SPEED_MODULE.get());
+            default -> ItemStack.EMPTY;
+        };
+    }
+
+    /**
+     * {@return the display names of the modules in {@code mask}, in {@link #FLAGS} order}
+     *
+     * <p>Read off the module items rather than from a second set of language keys, so a new module
+     * is picked up here as soon as it is registered. Used to spell out a prerequisite on the
+     * module's own tooltip.
+     */
+    public static List<Component> names(int mask) {
+        List<Component> names = new ArrayList<>();
+        for (int flag : FLAGS) {
+            if (!has(mask, flag)) {
+                continue;
+            }
+            ItemStack module = moduleStack(flag);
+            if (!module.isEmpty()) {
+                names.add(module.getHoverName());
+            }
         }
-        if (flag == ATTACK) {
-            return new ItemStack(ModItems.ATTACK_MODULE.get());
-        }
-        return ItemStack.EMPTY;
+        return names;
     }
 }

@@ -50,8 +50,12 @@ public class DroneModuleItem extends Item {
                                 List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.translatable(this.getDescriptionId() + ".desc")
                 .withStyle(ChatFormatting.GRAY));
-        if (this.requires != 0) {
-            tooltip.add(Component.translatable("tooltip.watchcraft.requires_customization")
+        // One line per prerequisite, named from the module items themselves. The old version
+        // hardcoded "requires the customization module" for every module that had any
+        // prerequisite at all, which is wrong the moment a module gates on another module rather
+        // than on the fitting bay - the signal booster's second tier gates on its first.
+        for (Component name : DroneModules.names(this.requires)) {
+            tooltip.add(Component.translatable("tooltip.watchcraft.requires", name)
                     .withStyle(ChatFormatting.DARK_AQUA));
         }
     }

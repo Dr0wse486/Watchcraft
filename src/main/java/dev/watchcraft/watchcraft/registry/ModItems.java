@@ -1,6 +1,7 @@
 package dev.watchcraft.watchcraft.registry;
 
 import dev.watchcraft.watchcraft.Watchcraft;
+import dev.watchcraft.watchcraft.item.BatteryItem;
 import dev.watchcraft.watchcraft.item.DroneModuleItem;
 import dev.watchcraft.watchcraft.item.DroneModules;
 import dev.watchcraft.watchcraft.item.ReconDroneItem;
@@ -40,6 +41,44 @@ public final class ModItems {
     public static final DeferredItem<DroneModuleItem> ATTACK_MODULE = ITEMS.register("attack_module",
             () -> new DroneModuleItem(new Item.Properties().stacksTo(16),
                     DroneModules.ATTACK, DroneModules.CUSTOMIZATION));
+
+    /**
+     * Signal booster, first tier: thirty-two more blocks of leash.
+     *
+     * <p>The second tier gates on the first rather than on the fitting bay alone, which is the
+     * whole point of having two items instead of one: you cannot skip straight to the long range.
+     */
+    public static final DeferredItem<DroneModuleItem> SIGNAL_MODULE_MK1 = ITEMS.register("signal_module_mk1",
+            () -> new DroneModuleItem(new Item.Properties().stacksTo(16),
+                    DroneModules.SIGNAL_MK1, DroneModules.CUSTOMIZATION));
+
+    public static final DeferredItem<DroneModuleItem> SIGNAL_MODULE_MK2 = ITEMS.register("signal_module_mk2",
+            () -> new DroneModuleItem(new Item.Properties().stacksTo(16),
+                    DroneModules.SIGNAL_MK2, DroneModules.CUSTOMIZATION | DroneModules.SIGNAL_MK1));
+
+    /** Governor removal: the cruise ceiling stops being the airframe's limit. */
+    public static final DeferredItem<DroneModuleItem> SPEED_MODULE = ITEMS.register("speed_module",
+            () -> new DroneModuleItem(new Item.Properties().stacksTo(16),
+                    DroneModules.SPEED, DroneModules.CUSTOMIZATION));
+
+    /**
+     * The cheap pack: a quarter of a full charge, so a quarter of the flight time.
+     *
+     * <p>Stackable while fresh - an absent charge component is what makes that work, since two
+     * packs that both carry an explicit "full" marker would refuse to merge.
+     */
+    public static final DeferredItem<BatteryItem> COPPER_BATTERY = ITEMS.register("copper_battery",
+            () -> new BatteryItem(new Item.Properties().stacksTo(16), BatteryItem.COPPER_CAPACITY));
+
+    /**
+     * Half of the graphite pack, and useless on its own - the recipe for the pack needs two of
+     * them, which is what makes it a prerequisite rather than an ingredient you might skip.
+     */
+    public static final DeferredItem<Item> GRAPHITE_ELECTRODE = ITEMS.register("graphite_electrode",
+            () -> new Item(new Item.Properties()));
+
+    public static final DeferredItem<BatteryItem> GRAPHITE_BATTERY = ITEMS.register("graphite_battery",
+            () -> new BatteryItem(new Item.Properties().stacksTo(16), BatteryItem.GRAPHITE_CAPACITY));
 
     private ModItems() {
     }

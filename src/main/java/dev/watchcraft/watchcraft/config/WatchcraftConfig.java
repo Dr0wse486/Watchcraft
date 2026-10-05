@@ -52,6 +52,12 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.IntValue hurtInvulnerableTicks;
         public final ModConfigSpec.IntValue hurtFlashTicks;
 
+        public final ModConfigSpec.DoubleValue moduleSignalRange;
+        public final ModConfigSpec.DoubleValue moduleSpeedMultiplier;
+
+        public final ModConfigSpec.IntValue batteryDrainTicks;
+        public final ModConfigSpec.IntValue batteryRecallTicks;
+
         public final ModConfigSpec.DoubleValue scanRange;
         public final ModConfigSpec.DoubleValue scanFov;
         public final ModConfigSpec.DoubleValue throwScanFov;
@@ -141,6 +147,32 @@ public final class WatchcraftConfig {
             hurtFlashTicks = builder
                     .comment("受击红闪在客户端持续的刻数")
                     .defineInRange("hurtFlashTicks", 10, 0, 200);
+            builder.pop();
+
+            builder.comment("模块效果：信号与速度").push("module");
+            moduleSignalRange = builder
+                    .comment("每一级信号模块增加的链路距离（格）。两级都加这么多，"
+                            + "所以两级都装是 linkRange + 64")
+                    .defineInRange("signalRange", 32.0D, 0.0D, 256.0D);
+            moduleSpeedMultiplier = builder
+                    .comment("速度解限模块把巡航上限提到玩家疾跑速度的多少倍。"
+                            + "原版疾跑约 5.612 格/秒，1.5 倍即 8.418 格/秒（约 0.42 格/刻）。"
+                            + "注意这是绝对目标而不是 flightSpeed 的倍数："
+                            + "调 flightSpeed 不会带动它。"
+                            + "上限卡在 2.0 是有原因的：滚筒冲刺会把上限再乘 1.15~3.0，"
+                            + "而服务端按 maxStep（默认 1.8 格/包）逐包校验，"
+                            + "倍率再高就会出现合法位移被服务端整包丢弃、无人机一卡一卡的情况")
+                    .defineInRange("speedMultiplier", 1.5D, 1.0D, 2.0D);
+            builder.pop();
+
+            builder.comment("电池：耗电速度与回收时长").push("battery");
+            batteryDrainTicks = builder
+                    .comment("每多少刻消耗一格电量。600 刻 = 30 秒，"
+                            + "也就是铜电池（25 格）撑 12.5 分钟、石墨电池（100 格）撑 50 分钟")
+                    .defineInRange("drainTicks", 600, 20, 24000);
+            batteryRecallTicks = builder
+                    .comment("回收要多少刻。60 刻 = 3 秒")
+                    .defineInRange("recallTicks", 60, 0, 600);
             builder.pop();
 
             builder.comment("扫描与标记").push("scan");

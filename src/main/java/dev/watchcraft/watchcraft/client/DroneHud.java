@@ -51,9 +51,15 @@ public final class DroneHud {
     /** Where the streaks begin, as a fraction of the half diagonal from the middle of the screen. */
     private static final double STREAK_INNER = 0.42D;
 
-    /** Past this range the link readout turns amber, warning the pilot before the leash snaps. */
-    private static double linkWarn() {
-        return ReconDroneEntity.LINK_RANGE * 0.75D;
+    /**
+     * Past this range the link readout turns amber, warning the pilot before the leash snaps.
+     *
+     * <p>Deliberately the same distance as the visor's static onset rather than a second constant
+     * that has to be kept in step by hand: the readout going amber and the picture starting to
+     * snow are two readings of the same event, and both now scale with the airframe's own leash.
+     */
+    private static double linkWarn(ReconDroneEntity drone) {
+        return drone.staticOnset();
     }
 
     /** HUD 主色的出厂值。同时也是 {@code hud.accentColor} 的默认值与解析失败时的兜底。 */
@@ -153,7 +159,7 @@ public final class DroneHud {
         }
 
         double range = minecraft.player == null ? 0.0D : Math.sqrt(drone.distanceToSqr(minecraft.player));
-        double breakup = DroneSignal.amount(range);
+        double breakup = DroneSignal.amount(drone, range);
 
         // The snow goes down first so the visor stays readable on top of it. Losing the picture is
         // the point; losing the readouts would just be annoying.
@@ -161,6 +167,9 @@ public final class DroneHud {
         drawChargeStreaks(graphics, width, height, millis, DroneController.chargeEffectIntensity());
         drawFrame(graphics, width, height, millis);
         drawReticle(graphics, width, height);
+        if (drone.isRecalling()) {
+            drawRecallBar(graphics, minecraft.font, width, height, drone.recallProgress());
+        }
         // 读数与按键条可以单独关掉：截图时留着准星和边框就够，四行数字和提示条反而碍事。
         if (showTelemetry) {
             drawTelemetry(graphics, minecraft.font, drone, range, millis);
@@ -170,7 +179,12 @@ public final class DroneHud {
                     drone.hasModule(DroneModules.ATTACK) ? chargeKeys(minecraft) : null);
         }
         if (breakup >= 1.0D) {
-            drawSignalLost(graphics, minecraft.font, width, height, millis);
+            // 没电池也会把画面糊死，但那时候说"信号丢失"是错的：信号好得很，缺的是电。
+            // 同一套横幅换一句文案，玩家才知道该去做什么。
+            boolean noBattery = !drone.hasBattery();
+            drawBanner(graphics, minecraft.font, width, height, millis,
+                    noBattery ? "hud.watchcraft.battery_needed" : "hud.watchcraft.signal_lost",
+                    noBattery ? AMBER : HURT);
         }
     }
 
@@ -273,18 +287,26 @@ public final class DroneHud {
         }
         RandomSource random = RandomSource.create(millis / 40L);
 
-        int veil = (int) (amount * 0x50);
+        // amount 可以超过 1 —— 没装电池的机体走的就是那条路（见 DroneSignal#NO_BATTERY_SEVERITY）。
+        // 但 alpha 一旦越过 0xFF 就会溢出到相邻通道上，所以先夹一个安全上限再往下算。
+        double severity = Math.min(amount, 3.0D);
+
+        int veil = (int) (severity * 0x50);
         if (veil > 0) {
             graphics.fill(0, 0, width, height, veil << 24 | HAZE);
         }
-        drawVignette(graphics, width, height, amount);
+        drawVignette(graphics, width, height, severity);
 
         // Torn lines, few and mostly short. Real analogue interference is overwhelmingly speckle;
         // the scan lines are the punctuation, not the sentence. An earlier pass drew ten of these
         // per grade and the picture read as venetian blinds rather than as a struggling feed.
         // One pixel tall, too: a thicker band stops reading as a torn scan line and starts reading
         // as a stripe drawn on top of the picture.
-        int tears = (int) (amount * 4.0D);
+        //
+        // 而且这一档**封顶在 1**：越过 1 之后再堆横条只会变成百叶窗。"看不见"是靠雾底和
+        // 颗粒做出来的，不是靠横条，所以没电池那种更重的劣化也不该把它们一起拉长。
+        double tearAmount = Math.min(amount, 1.0D);
+        int tears = (int) (tearAmount * 4.0D);
         for (int i = 0; i < tears; i++) {
             int y = random.nextInt(height);
             int length = width / 5 + random.nextInt(Math.max(1, width * 3 / 5));
@@ -292,7 +314,7 @@ public final class DroneHud {
             int alpha = 0x0A + random.nextInt(0x18);
             graphics.fill(x, y, Math.min(x + length, width), y + 1, alpha << 24 | 0xE4F2FA);
         }
-        int fullTears = (int) (amount * 1.2D);
+        int fullTears = (int) (tearAmount * 1.2D);
         for (int i = 0; i < fullTears; i++) {
             int y = random.nextInt(height);
             graphics.fill(0, y, width, y + 1, (0x0C + random.nextInt(0x18)) << 24 | 0xE4F2FA);
@@ -300,7 +322,12 @@ public final class DroneHud {
 
         // The bulk of the effect. Dense and fine: at a typical GUI scale a "pixel" here is two or
         // three real pixels, which is what keeps it reading as noise rather than as confetti.
-        int grains = Math.min((int) (width * height * 0.012D * amount), 14000);
+        //
+        // 颗粒数是"几乎看不见"的主力，所以上限也跟着 severity 一起放大：1080p 下 amount=1
+        // 本来就已经顶到 14000 了，不放开的话加重幅度等于零。放大系数单独收窄到 1.5 ——
+        // 每颗粒子都是一次 fill 调用，2 万多次已经够重，再往上换来的密度远不如它花掉的帧时间。
+        int grainCap = (int) (14000 * Math.min(severity, 1.5D));
+        int grains = Math.min((int) (width * height * 0.012D * amount), grainCap);
         for (int i = 0; i < grains; i++) {
             int x = random.nextInt(width);
             int y = random.nextInt(height);
@@ -406,15 +433,22 @@ public final class DroneHud {
     }
 
     /** Blinking banner for the far end of the leash, where the picture is gone entirely. */
-    private static void drawSignalLost(GuiGraphics graphics, Font font, int width, int height, long millis) {
+    /**
+     * 画面中央偏下的闪烁横幅。
+     *
+     * <p>两个来源共用：距离超出链路（"信号丢失"）和没装电池（"需要加装电池"）。
+     * 它们的画面表现本来就是同一件事 —— 全糊 —— 所以提示也只该有一个出口，区别只在文案。
+     */
+    private static void drawBanner(GuiGraphics graphics, Font font, int width, int height,
+                                   long millis, String key, int colour) {
         if ((millis / 300L) % 2L != 0L) {
             return;
         }
-        String text = translate("hud.watchcraft.signal_lost");
+        String text = translate(key);
         int x = (width - font.width(text)) / 2;
         int y = height / 2 + 30;
         graphics.fill(x - 8, y - 4, x + font.width(text) + 8, y + 11, PANEL);
-        graphics.drawString(font, text, x, y, HURT, false);
+        graphics.drawString(font, text, x, y, colour, false);
     }
     // ------------------------------------------------------------------ frame
 
@@ -493,6 +527,7 @@ public final class DroneHud {
         String labelY = Component.translatable("hud.watchcraft.axis_y").getString();
         String labelR = Component.translatable("hud.watchcraft.range").getString();
         String labelH = Component.translatable("hud.watchcraft.health").getString();
+        String labelB = Component.translatable("hud.watchcraft.battery").getString();
 
         String valueX = format(drone.getX());
         String valueY = format(drone.getY());
@@ -500,17 +535,26 @@ public final class DroneHud {
         float health = drone.getHealth();
         String valueH = whole(health) + " / " + whole(ReconDroneEntity.MAX_HEALTH);
 
+        // 电量单位就是百分点，所以这个数字不需要换算，直接印出来就是设计里说的那个数。
+        boolean hasBattery = drone.hasBattery();
+        int charge = drone.batteryCharge();
+        String valueB = hasBattery
+                ? charge + "%"
+                : Component.translatable("hud.watchcraft.battery_none").getString();
+        int chargeColour = !hasBattery ? TEXT_DIM : charge > 50 ? CYAN : charge > 20 ? AMBER : HURT;
+
         int lineHeight = 11;
         int padding = 9;
         int labelWidth = Math.max(Math.max(font.width(labelX), font.width(labelY)),
-                Math.max(font.width(labelR), font.width(labelH)));
+                Math.max(Math.max(font.width(labelR), font.width(labelH)), font.width(labelB)));
         int valueWidth = Math.max(Math.max(font.width(valueX), font.width(valueY)),
-                Math.max(font.width(valueR), font.width(valueH)));
+                Math.max(Math.max(font.width(valueR), font.width(valueH)), font.width(valueB)));
 
         int panelX = 12;
         int panelY = 12;
         int panelWidth = padding * 2 + labelWidth + 10 + valueWidth;
-        int panelHeight = lineHeight * 4 + 11;
+        // 五行文字，外加底部一条电量条。
+        int panelHeight = lineHeight * 5 + 11 + 5;
 
         graphics.fill(panelX, panelY, panelX + panelWidth, panelY + panelHeight, PANEL);
         // Live pulse on the accent bar so a parked drone still reads as "on".
@@ -524,9 +568,40 @@ public final class DroneHud {
         row(graphics, font, labelX, valueX, textX, valueRight, textY, TEXT_DIM, TEXT);
         row(graphics, font, labelY, valueY, textX, valueRight, textY + lineHeight, TEXT_DIM, TEXT);
         row(graphics, font, labelR, valueR, textX, valueRight, textY + lineHeight * 2, TEXT_DIM,
-                range > linkWarn() ? AMBER : CYAN);
+                range > linkWarn(drone) ? AMBER : CYAN);
         row(graphics, font, labelH, valueH, textX, valueRight, textY + lineHeight * 3, TEXT_DIM,
                 health <= ReconDroneEntity.MAX_HEALTH * 0.3F ? HURT : CYAN);
+        row(graphics, font, labelB, valueB, textX, valueRight, textY + lineHeight * 4, TEXT_DIM,
+                chargeColour);
+
+        // 数字给准确值，条给一眼可读的量。没有电池时只留一条空槽，不做假填充。
+        int barTop = panelY + panelHeight - 6;
+        graphics.fill(textX, barTop, valueRight, barTop + 2, 0x33FFFFFF);
+        if (hasBattery) {
+            int filled = (valueRight - textX) * charge / ReconDroneEntity.BATTERY_FULL;
+            graphics.fill(textX, barTop, textX + filled, barTop + 2, chargeColour);
+        }
+    }
+
+    /**
+     * 回收进度条。
+     *
+     * <p>画在按键条上方居中，而且不受 {@code hud.showTelemetry} 影响：这三秒里回收是唯一在发生
+     * 的事，把它藏在一个可关的开关后面没有道理。
+     */
+    private static void drawRecallBar(GuiGraphics graphics, Font font, int width, int height,
+                                      float progress) {
+        int barWidth = 120;
+        int barHeight = 4;
+        int x = (width - barWidth) / 2;
+        int y = height - 76;
+
+        String label = Component.translatable("hud.watchcraft.recalling").getString();
+        graphics.drawString(font, label, (width - font.width(label)) / 2, y - 12, AMBER, false);
+
+        graphics.fill(x - 1, y - 1, x + barWidth + 1, y + barHeight + 1, PANEL);
+        graphics.fill(x, y, x + barWidth, y + barHeight, CYAN_FAINT);
+        graphics.fill(x, y, x + Math.round(barWidth * progress), y + barHeight, AMBER);
     }
 
     private static void row(GuiGraphics graphics, Font font, String label, String value,

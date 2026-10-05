@@ -1,6 +1,8 @@
 package dev.watchcraft.watchcraft.entity;
 
+import dev.watchcraft.watchcraft.item.BatteryItem;
 import dev.watchcraft.watchcraft.item.DroneModules;
+import dev.watchcraft.watchcraft.item.ReconDroneItem;
 import dev.watchcraft.watchcraft.network.DroneScanPayload;
 import dev.watchcraft.watchcraft.registry.ModEntities;
 import dev.watchcraft.watchcraft.registry.ModSounds;
@@ -79,6 +81,41 @@ public class ReconDroneEntity extends Entity {
 
     /** How far the pilot may wander away from the drone before the link drops. */
     public static double LINK_RANGE = 64.0D;
+    /**
+     * Extra leash per signal booster tier, in blocks.
+     *
+     * <p>Both tiers add the same amount, so the fitted bonus is just this times the number of
+     * booster bits present - see {@link #linkRange()}.
+     */
+    public static double SIGNAL_RANGE_PER_TIER = 32.0D;
+    /**
+     * Vanilla sprinting speed, in blocks per tick.
+     *
+     * <p>5.612 blocks a second is the standard figure for a sprinting player on flat ground,
+     * divided by twenty ticks. It is the yardstick for the speed module rather than a multiplier on
+     * {@link #FLIGHT_SPEED}, because "1.5x a running player" is an absolute target: retuning the
+     * base cruise speed should not drag the module's ceiling along with it.
+     */
+    public static final double PLAYER_SPRINT_SPEED = 5.612D / 20.0D;
+    /** Multiple of {@link #PLAYER_SPRINT_SPEED} that the speed module unlocks. */
+    public static double SPEED_MODULE_MULTIPLIER = 1.5D;
+    /** {@link #PLAYER_SPRINT_SPEED} times {@link #SPEED_MODULE_MULTIPLIER}, in blocks per tick. */
+    public static double SPEED_MODULE_SPEED = PLAYER_SPRINT_SPEED * SPEED_MODULE_MULTIPLIER;
+
+    /**
+     * Charge units in a full bar.
+     *
+     * <p>One unit is one percent of the drone's capacity, so the numbers the design talks in - a
+     * copper pack at 25, a graphite one at 100 - are the numbers the code stores and the HUD prints,
+     * with no conversion anywhere in between.
+     */
+    public static final int BATTERY_FULL = BatteryItem.GRAPHITE_CAPACITY;
+
+    /** Ticks between one unit of charge and the next. Six hundred is thirty seconds. */
+    public static int BATTERY_DRAIN_TICKS = 600;
+
+    /** How long a recall takes, in ticks. Sixty is three seconds. */
+    public static int RECALL_TICKS = 60;
     /** Distance at which the visor picture starts to break up. */
     public static double STATIC_ONSET = 48.0D;
     /**
@@ -458,11 +495,36 @@ public class ReconDroneEntity extends Entity {
     private static final EntityDataAccessor<Boolean> DATA_FOLLOWING =
             SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.BOOLEAN);
 
-    @Nullable
-    private UUID ownerUUID;
+    /**
+     * The owner's UUID as text, empty when there is none.
+     *
+     * <p>Synced rather than kept in a plain field because the client has to be able to answer
+     * "is this mine?" - see {@link #interact}. Vanilla has no optional-UUID data serializer, so
+     * the empty string stands in for "no owner"; the value is set once at spawn and never changes.
+     */
+    private static final EntityDataAccessor<String> DATA_OWNER =
+            SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.STRING);
+
+    /**
+     * The battery seated in this airframe, empty for none.
+     *
+     * <p>A stack rather than a charge number plus a type tag, because the stack already carries
+     * both - which pack it is and how much is left in it - and taking it out has to hand the player
+     * back exactly what went in. {@code ITEM_STACK} is backed by {@code OPTIONAL_STREAM_CODEC}, so
+     * an empty stack is a legal value.
+     */
+    private static final EntityDataAccessor<ItemStack> DATA_BATTERY =
+            SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.ITEM_STACK);
+
+    /** Recall progress in ticks, zero when not recalling. Synced so the HUD can draw the bar. */
+    private static final EntityDataAccessor<Integer> DATA_RECALL_TICKS =
+            SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.INT);
+
     private boolean thrown;
     private int throwTicks;
     private int scanTimer;
+    /** Ticks since the last unit of charge was burned. Server side only. */
+    private int batteryTimer;
     /** Ticks of immunity left after the last hit. Server side only. */
     private int hurtCooldown;
     /** Server side only: the last tick that accepted a movement packet, used to throttle clients. */
@@ -566,6 +628,13 @@ public class ReconDroneEntity extends Entity {
         HURT_INVULNERABLE_TICKS = common.hurtInvulnerableTicks.get();
         HURT_FLASH_TICKS = common.hurtFlashTicks.get();
 
+        SIGNAL_RANGE_PER_TIER = common.moduleSignalRange.get();
+        SPEED_MODULE_MULTIPLIER = common.moduleSpeedMultiplier.get();
+        SPEED_MODULE_SPEED = PLAYER_SPRINT_SPEED * SPEED_MODULE_MULTIPLIER;
+
+        BATTERY_DRAIN_TICKS = common.batteryDrainTicks.get();
+        RECALL_TICKS = common.batteryRecallTicks.get();
+
         SCAN_RANGE = common.scanRange.get();
         SCAN_FOV = common.scanFov.get();
         THROW_SCAN_FOV = common.throwScanFov.get();
@@ -634,11 +703,14 @@ public class ReconDroneEntity extends Entity {
         builder.define(DATA_ROLL, 0.0F);
         builder.define(DATA_STATIC_TICKS, 0);
         builder.define(DATA_FOLLOWING, false);
+        builder.define(DATA_OWNER, "");
+        builder.define(DATA_BATTERY, ItemStack.EMPTY);
+        builder.define(DATA_RECALL_TICKS, 0);
     }
 
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
-        this.ownerUUID = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
+        this.setOwnerUUID(tag.hasUUID("Owner") ? tag.getUUID("Owner") : null);
         this.thrown = tag.getBoolean("Thrown");
         // A damaged airframe stays damaged across a reload.
         this.setHealth(tag.contains("Health") ? tag.getFloat("Health") : MAX_HEALTH);
@@ -646,34 +718,56 @@ public class ReconDroneEntity extends Entity {
         this.setModules(tag.getInt("Modules"));
         // 跟随状态跨存档保留：重启之后那架无人机应该接着跟，而不是悄悄停在半空。
         this.setFollowing(tag.contains("Following") ? tag.getBoolean("Following") : FOLLOW_ENABLED);
+        // The pack, with however much charge was left in it.
+        if (tag.contains("Battery")) {
+            ItemStack.parse(this.registryAccess(), tag.get("Battery")).ifPresent(this::setBattery);
+        }
         // A drone never stays linked across a reload.
         this.setPilotId(-1);
     }
 
     @Override
     protected void addAdditionalSaveData(CompoundTag tag) {
-        if (this.ownerUUID != null) {
-            tag.putUUID("Owner", this.ownerUUID);
+        UUID owner = this.getOwnerUUID();
+        if (owner != null) {
+            tag.putUUID("Owner", owner);
         }
         tag.putBoolean("Thrown", this.thrown);
         tag.putFloat("Health", this.getHealth());
         tag.putInt("Modules", this.getModules());
         tag.putBoolean("Following", this.isFollowing());
+        ItemStack battery = this.getBattery();
+        if (!battery.isEmpty()) {
+            tag.put("Battery", battery.save(this.registryAccess()));
+        }
     }
 
     // ------------------------------------------------------------------ identity
 
     public void setOwner(@Nullable Player player) {
-        this.ownerUUID = player == null ? null : player.getUUID();
+        this.setOwnerUUID(player == null ? null : player.getUUID());
+    }
+
+    private void setOwnerUUID(@Nullable UUID owner) {
+        this.entityData.set(DATA_OWNER, owner == null ? "" : owner.toString());
     }
 
     @Nullable
     public UUID getOwnerUUID() {
-        return this.ownerUUID;
+        String raw = this.entityData.get(DATA_OWNER);
+        if (raw.isEmpty()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException malformed) {
+            return null;
+        }
     }
 
     public boolean isOwnedBy(Player player) {
-        return this.ownerUUID != null && this.ownerUUID.equals(player.getUUID());
+        UUID owner = this.getOwnerUUID();
+        return owner != null && owner.equals(player.getUUID());
     }
 
     public int getPilotId() {
@@ -715,11 +809,221 @@ public class ReconDroneEntity extends Entity {
     }
 
     public void setModules(int mask) {
-        this.entityData.set(DATA_MODULES, mask & (DroneModules.CUSTOMIZATION | DroneModules.ATTACK));
+        // Masked against the whole flag set rather than a hand-written pair. The literal pair this
+        // used to be silently stripped every module added after it was written, which is the kind
+        // of bug that only shows up as "the new part does nothing".
+        this.entityData.set(DATA_MODULES, mask & DroneModules.ALL);
     }
 
     public boolean hasModule(int flag) {
         return DroneModules.has(this.getModules(), flag);
+    }
+
+    /**
+     * {@return how far this airframe's leash reaches, signal boosters included}
+     *
+     * <p>Read off the synced module mask rather than a local copy, so both sides agree without an
+     * extra packet: the client draws the range readout and the breakup ramp from this number, and
+     * the server decides where the leash snaps from the same one.
+     */
+    public double linkRange() {
+        double range = LINK_RANGE;
+        if (this.hasModule(DroneModules.SIGNAL_MK1)) {
+            range += SIGNAL_RANGE_PER_TIER;
+        }
+        if (this.hasModule(DroneModules.SIGNAL_MK2)) {
+            range += SIGNAL_RANGE_PER_TIER;
+        }
+        return range;
+    }
+
+    /**
+     * {@return the distance at which this airframe's picture starts to break up}
+     *
+     * <p>Scaled with the leash rather than held at the base figure, so a signal booster moves the
+     * clean window out along with the range it buys: a bare drone is clean to 75% of 64, a fully
+     * boosted one to 75% of 128. Keeping {@link #STATIC_ONSET} fixed instead leaves a boosted
+     * drone with a clean picture for most of a much longer line, and the degradation collapses
+     * into a slow crawl at the far end - which is not what a longer leash should feel like.
+     *
+     * <p>The ratio is read from the two configured values rather than hardcoded, so retuning
+     * either one still moves the onset with it. It also lands exactly on
+     * {@code linkRange() * 0.75}, which is where the HUD's range readout turns amber - the picture
+     * and the warning light still come on together, on every airframe.
+     */
+    public double staticOnset() {
+        if (LINK_RANGE <= 0.0D) {
+            return STATIC_ONSET;
+        }
+        return this.linkRange() * (STATIC_ONSET / LINK_RANGE);
+    }
+
+    /**
+     * {@return the farthest any airframe's leash can reach}
+     *
+     * <p>For the searches that have to find a drone before they know what it is carrying - looking
+     * one up near a player, or dropping a stale link. Using {@link #LINK_RANGE} for those would
+     * quietly stop finding boosted drones.
+     */
+    public static double maxLinkRange() {
+        return LINK_RANGE + 2.0D * SIGNAL_RANGE_PER_TIER;
+    }
+
+    /**
+     * {@return this airframe's cruise ceiling, in blocks per tick}
+     *
+     * <p>The governor module replaces the ceiling rather than scaling it; see
+     * {@link #SPEED_MODULE_SPEED} for why.
+     */
+    public double flightSpeed() {
+        return this.hasModule(DroneModules.SPEED) ? SPEED_MODULE_SPEED : FLIGHT_SPEED;
+    }
+
+    // ------------------------------------------------------------------ battery
+
+    /** {@return the pack seated in this airframe, or an empty stack} */
+    public ItemStack getBattery() {
+        return this.entityData.get(DATA_BATTERY);
+    }
+
+    /** Seats a pack, or clears the slot when handed an empty stack. */
+    public void setBattery(ItemStack battery) {
+        // Always a fresh stack: entity data is compared with equals, so mutating the one already
+        // in the slot would change it without ever marking it dirty and the client would never see
+        // the new charge.
+        this.entityData.set(DATA_BATTERY, battery.isEmpty() ? ItemStack.EMPTY : battery.copyWithCount(1));
+    }
+
+    public boolean hasBattery() {
+        return !this.getBattery().isEmpty();
+    }
+
+    /** {@return charge left in the fitted pack, or zero when there is none} */
+    public int batteryCharge() {
+        ItemStack battery = this.getBattery();
+        return battery.getItem() instanceof BatteryItem pack ? pack.chargeOf(battery) : 0;
+    }
+
+    /**
+     * {@return this airframe as an item, loadout and pack included}
+     *
+     * <p>The single place that knows what travels with a drone. Every path that turns a live
+     * airframe back into an item - picking it up, a recall, being shot down - goes through here, so
+     * a new kind of carried kit only has to be added once.
+     */
+    public ItemStack toStack() {
+        ItemStack stack = DroneModules.droneStack(this.getModules());
+        ReconDroneItem.setBattery(stack, this.getBattery());
+        return stack;
+    }
+
+    /**
+     * Burns charge, and starts a recall when there is none left.
+     *
+     * <p>Runs on every server tick, including during an attack run: a run does not pause the clock,
+     * it only postpones the consequence. The recall is what waits - see {@link #beginRecall()}.
+     */
+    private void tickBattery() {
+        ItemStack battery = this.getBattery();
+        if (battery.isEmpty()) {
+            this.batteryTimer = 0;
+            return;
+        }
+        if (++this.batteryTimer < BATTERY_DRAIN_TICKS) {
+            return;
+        }
+        this.batteryTimer = 0;
+
+        ItemStack drained = ((BatteryItem) battery.getItem()).drainedBy(battery, 1);
+        // A spent pack leaves the slot rather than sitting in it at zero looking usable.
+        this.setBattery(drained);
+        // 冲刺中电量耗尽什么都不做，而且不需要补做：这一趟必然以 detonate 收尾
+        // （超时、撞上目标、撞上地形三条路都走它），机体本来就会被炸掉，
+        // 再排一次回收只会和损毁抢同一次收尾。电量耗尽的前提只是"别在半途把机体拽走"，
+        // 那件事由 beginRecall 拒绝冲刺中的机体来保证，不需要挂起。
+        if (drained.isEmpty() && !this.isCharging()) {
+            this.beginRecall();
+        }
+    }
+
+    // ------------------------------------------------------------------ recall
+
+    /** {@return ticks of recall elapsed, zero when not recalling} */
+    public int getRecallTicks() {
+        return this.entityData.get(DATA_RECALL_TICKS);
+    }
+
+    public boolean isRecalling() {
+        return this.getRecallTicks() > 0;
+    }
+
+    /** {@return recall progress from zero to one, for the HUD's bar} */
+    public float recallProgress() {
+        return Mth.clamp((float) this.getRecallTicks() / RECALL_TICKS, 0.0F, 1.0F);
+    }
+
+    /**
+     * Starts winding the drone in.
+     *
+     * <p>Refused mid-run: a charge is a committed one-way trip and yanking the airframe out of it
+     * would take the camera away from the blast the pilot lined up. The run finishes first, and the
+     * recall the empty battery asked for happens straight afterwards - that is what "ignore the
+     * battery until the attack completes" means in practice.
+     *
+     * @return whether a recall was started
+     */
+    public boolean beginRecall() {
+        if (this.isRecalling() || this.isCharging() || this.isRemoved()) {
+            return false;
+        }
+        this.entityData.set(DATA_RECALL_TICKS, 1);
+        return true;
+    }
+
+    /**
+     * Advances a recall already under way.
+     *
+     * @return whether the caller should stop: the airframe is being wound in and owns this tick
+     */
+    private boolean tickRecall() {
+        int elapsed = this.getRecallTicks();
+        if (elapsed <= 0) {
+            return false;
+        }
+        // Frozen while it winds in - a drone on its way back to the pack is not flying anywhere.
+        this.setDeltaMovement(Vec3.ZERO);
+        if (++elapsed < RECALL_TICKS) {
+            this.entityData.set(DATA_RECALL_TICKS, elapsed);
+            return true;
+        }
+        this.entityData.set(DATA_RECALL_TICKS, 0);
+        this.finishRecall();
+        return true;
+    }
+
+    /** Hands the airframe back: into the owner's inventory if they are here, on the ground if not. */
+    private void finishRecall() {
+        Player owner = this.getOwnerPlayer();
+        if (owner != null) {
+            this.pickUp(owner);
+            owner.displayClientMessage(Component.translatable("message.watchcraft.recalled"), true);
+            return;
+        }
+        // Nobody to hand it to. Dropping it where it stands beats deleting it - the drone and its
+        // pack are both worth real materials, and the owner can come back for them.
+        this.disconnectPilot();
+        this.clearMarks();
+        this.spawnAtLocation(this.toStack(), 0.25F);
+        this.discard();
+    }
+
+    @Nullable
+    private Player getOwnerPlayer() {
+        UUID ownerId = this.getOwnerUUID();
+        if (ownerId == null || !(this.level() instanceof ServerLevel serverLevel)) {
+            return null;
+        }
+        return serverLevel.getServer().getPlayerList().getPlayer(ownerId);
     }
 
     /** {@return whether this drone is mid attack run, warhead armed and committed} */
@@ -942,8 +1246,10 @@ public class ReconDroneEntity extends Entity {
      */
     private void goDown(Component message, boolean recoverable) {
         this.prepareForRemoval(message);
-        if (recoverable && this.ownerUUID != null) {
-            this.spawnAtLocation(DroneModules.droneStack(this.getModules()), 0.25F);
+        if (recoverable && this.getOwnerUUID() != null) {
+            // toStack rather than a bare airframe: "the whole thing goes with it" has to include
+            // the pack, or a shot-down drone would quietly eat a hundred units of charge.
+            this.spawnAtLocation(this.toStack(), 0.25F);
         }
         this.discard();
     }
@@ -965,8 +1271,9 @@ public class ReconDroneEntity extends Entity {
                 this.getX(), this.getY() + 0.15D, this.getZ(),
                 10, 0.18D, 0.12D, 0.18D, 0.06D);
 
-        if (this.ownerUUID != null) {
-            ServerPlayer owner = serverLevel.getServer().getPlayerList().getPlayer(this.ownerUUID);
+        UUID ownerId = this.getOwnerUUID();
+        if (ownerId != null) {
+            ServerPlayer owner = serverLevel.getServer().getPlayerList().getPlayer(ownerId);
             if (owner != null) {
                 owner.displayClientMessage(message, true);
             }
@@ -1104,6 +1411,13 @@ public class ReconDroneEntity extends Entity {
             this.holdPilot(pilot);
         }
 
+        // 电量表一直在走，冲刺期间也走 —— 冲刺只是把"耗尽之后怎么办"往后推，不是把表停了。
+        this.tickBattery();
+        // 回收优先于其他一切：机体正在被收回去，这一 tick 它哪儿也不去。
+        if (this.tickRecall()) {
+            return;
+        }
+
         // 引爆后的雪花屏阶段：机体还在，链路还在，位置冻结，倒计时归零才真正销毁。
         // 放在攻击判定之前，是因为这时候已经没有攻击可言了，剩下的只有等画面烧完。
         if (this.staticTicks > 0) {
@@ -1148,7 +1462,7 @@ public class ReconDroneEntity extends Entity {
                 && !pilot.isRemoved()
                 && !pilot.isSpectator()
                 && pilot.level() == this.level()
-                && pilot.distanceToSqr(this) <= LINK_RANGE * LINK_RANGE;
+                && pilot.distanceToSqr(this) <= this.linkRange() * this.linkRange();
     }
 
     /**
@@ -1401,6 +1715,11 @@ public class ReconDroneEntity extends Entity {
         if (this.isCharging() || this.isDetonated() || this.chargeCooldown > 0) {
             return false;
         }
+        // 正在被收回的机体哪儿也去不了。和 beginRecall 里那条拒绝是一对：那边拒绝在冲刺中回收，
+        // 这边拒绝在回收中冲刺，两个方向都要堵，否则会停在"既是冲刺又是回收"的状态里。
+        if (this.isRecalling()) {
+            return false;
+        }
         if (!this.hasModule(DroneModules.ATTACK) || !this.isPilotedBy(pilot)) {
             return false;
         }
@@ -1649,8 +1968,7 @@ public class ReconDroneEntity extends Entity {
         if (entity.getId() == this.getPilotId()) {
             return false;
         }
-        if (this.ownerUUID != null && entity instanceof Player player
-                && this.ownerUUID.equals(player.getUUID())) {
+        if (entity instanceof Player player && this.isOwnedBy(player)) {
             return false;
         }
         return true;
@@ -1999,11 +2317,12 @@ public class ReconDroneEntity extends Entity {
     /** {@return 放飞者，不在线时为 {@code null}} */
     @Nullable
     private ServerPlayer getOwnerPlayer(ServerLevel level) {
-        if (this.ownerUUID == null) {
+        UUID ownerId = this.getOwnerUUID();
+        if (ownerId == null) {
             return null;
         }
         MinecraftServer server = level.getServer();
-        return server == null ? null : server.getPlayerList().getPlayer(this.ownerUUID);
+        return server == null ? null : server.getPlayerList().getPlayer(ownerId);
     }
 
     /**
@@ -2055,26 +2374,74 @@ public class ReconDroneEntity extends Entity {
 
     // ------------------------------------------------------------------ interaction
 
+    /**
+     * 右键无人机。
+     *
+     * <p><b>这里的判断必须在两端给出同一个答案</b>，而且客户端的答案决定的东西比看上去多：
+     * 原版 {@code Minecraft#startUseItem} 的实体分支是
+     * 「先试 {@code interactAt}，不消耗再试 {@code interact}，一旦消耗就直接 {@code return}」——
+     * 于是只要这里返回 {@code SUCCESS}，**玩家手上的物品根本不会被使用**。
+     *
+     * <p>原来客户端是无条件返回 {@code SUCCESS} 的，而机主 UUID 只存在服务端的普通字段里、
+     * 客户端读不到，两边就永远不可能一致。结果就是：准星只要落在任意一架无人机上，
+     * 刷怪蛋、方块、食物全都用不出来。修法是把机主同步过去（{@link #DATA_OWNER}），
+     * 让客户端能算出和服务器一样的答案。
+     */
     @Override
     public InteractionResult interact(Player player, InteractionHand hand) {
+        // 非机主一律放行；机主不潜行也放行——回收要潜行，这是设计。
+        if (!this.isOwnedBy(player) || !player.isShiftKeyDown()) {
+            return InteractionResult.PASS;
+        }
         if (this.level().isClientSide) {
             return InteractionResult.SUCCESS;
         }
-        if (!this.isOwnedBy(player)) {
-            return InteractionResult.PASS;
-        }
-        if (player.isShiftKeyDown()) {
+        // 手里拿着电池就是装/拆，否则才是把整架收进背包。两件事都消耗这次交互，
+        // 所以客户端那个 SUCCESS 对两种情况都成立 —— 见上面关于返回值的注释。
+        ItemStack held = player.getItemInHand(hand);
+        if (held.getItem() instanceof BatteryItem) {
+            this.toggleBattery(player, held);
+        } else {
             this.pickUp(player);
-            return InteractionResult.CONSUME;
         }
-        return InteractionResult.PASS;
+        return InteractionResult.CONSUME;
+    }
+
+    /**
+     * 装或拆电池，看当前状态：空槽就把手里这块装上，已经装了就把那块拆下来还给玩家。
+     *
+     * <p>一个键管两件事而不是两个键：机体只有一个电池位，装了就不该再装，所以「有就拆、
+     * 没有就装」是唯一说得通的语义，也就不需要玩家记两个操作。
+     *
+     * <p>手里拿着电池而槽里已经有一块时，拆下来的是**槽里那块**（连同它剩余的电量），
+     * 手里那块原样留着 —— 这样拆装是严格可逆的，不会出现"拿 B 装进去结果 A 不见了"。
+     */
+    private void toggleBattery(Player player, ItemStack held) {
+        ItemStack seated = this.getBattery();
+        if (seated.isEmpty()) {
+            this.setBattery(held.copyWithCount(1));
+            held.shrink(1);
+            this.batteryTimer = 0;
+            player.displayClientMessage(
+                    Component.translatable("message.watchcraft.battery_installed"), true);
+            return;
+        }
+
+        this.setBattery(ItemStack.EMPTY);
+        this.batteryTimer = 0;
+        if (!player.getInventory().add(seated)) {
+            player.drop(seated, false);
+        }
+        player.displayClientMessage(
+                Component.translatable("message.watchcraft.battery_removed"), true);
     }
 
     private void pickUp(Player player) {
         this.disconnectPilot();
         this.clearMarks();
-        // The loadout travels with the airframe: a fitted drone comes back fitted.
-        ItemStack stack = DroneModules.droneStack(this.getModules());
+        // The loadout travels with the airframe: a fitted drone comes back fitted, and a drone that
+        // was carrying a half-spent pack comes back carrying that same half-spent pack.
+        ItemStack stack = this.toStack();
         if (!player.getInventory().add(stack)) {
             player.drop(stack, false);
         }
@@ -2127,6 +2494,7 @@ public class ReconDroneEntity extends Entity {
         // 放飞即进入跟随。这正是"不用坐进驾驶舱也能享受标记"这条需求的默认形态：
         // 扔出去之后什么都不用管，它自己跟上来、自己侦察。
         drone.setFollowing(FOLLOW_ENABLED);
+        drone.setBattery(ReconDroneItem.batteryOf(stack));
         drone.setDeltaMovement(look.scale(THROW_SPEED).add(0.0D, 0.06D, 0.0D));
         drone.markThrown();
         level.addFreshEntity(drone);
@@ -2142,7 +2510,9 @@ public class ReconDroneEntity extends Entity {
                 && drone.isOwnedBy(player)) {
             return drone;
         }
-        AABB area = player.getBoundingBox().inflate(LINK_RANGE);
+        // maxLinkRange, not LINK_RANGE: this runs before we know what the drone is carrying, and a
+        // boosted airframe parked past the base leash would simply never be found.
+        AABB area = player.getBoundingBox().inflate(maxLinkRange());
         return level.getEntitiesOfClass(ReconDroneEntity.class, area,
                         drone -> drone.isOwnedBy(player) && !drone.isPiloted())
                 .stream()

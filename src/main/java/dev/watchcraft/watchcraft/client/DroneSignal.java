@@ -101,19 +101,40 @@ public final class DroneSignal {
     }
 
     /**
-     * How far the picture has degraded: 0 at {@link ReconDroneEntity#STATIC_ONSET}, 1 at
-     * {@link ReconDroneEntity#LINK_RANGE}.
+     * 没装电池时画面劣化的强度，**故意大于 1**。
      *
-     * <p>The ramp is continuous, but because the two ends are exactly four {@code STATIC_STEP}s
-     * apart it still lands on the grades the design calls for: clean at 48, a quarter at 52, half
-     * at 56, three quarters at 60 and a full whiteout at 64.
+     * <p>1.0 是"链路拉到极限"那一档：糊、下雪，但你还认得出树和墙。没电池要的不是"更远的距离"，
+     * 而是"这块屏幕已经没用了"，所以这里越界，让模糊半径和雪花浓度一起再往上走一截。
+     *
+     * <p>两个效果都按这个数线性放大（半径直接乘，雪花的雾底与颗粒数也乘），所以整体轻重
+     * 只有这一个旋钮 —— 觉得还不够糊就调大它，不用去动别的常数。
      */
-    public static double amount(double range) {
-        double span = ReconDroneEntity.LINK_RANGE - ReconDroneEntity.STATIC_ONSET;
+    public static final double NO_BATTERY_SEVERITY = 1.8D;
+
+    /**
+     * How far the picture has degraded: 0 at the airframe's own static onset, 1 at its own leash.
+     *
+     * <p>Both ends come off the drone rather than off the base constants, because signal boosters
+     * push them out together - see {@link ReconDroneEntity#staticOnset()}. On a bare drone the two
+     * ends are the original 48 and 64, exactly four {@code STATIC_STEP}s apart, so it still lands
+     * on the grades the design calls for: clean at 48, a quarter at 52, half at 56, three quarters
+     * at 60, whiteout at 64. A boosted one simply degrades over a proportionally longer run.
+     *
+     * <p>An airframe with no pack at all is the one case that returns more than 1 - see
+     * {@link #NO_BATTERY_SEVERITY}.
+     */
+    public static double amount(ReconDroneEntity drone, double range) {
+        // 没装电池的机体画面是全糊的 —— 直接借"最远距离"那一档再往上加，而不是另做一套效果：
+        // 玩家已经知道画面糊是什么意思，缺的只是一个"为什么糊"的提示，那个提示在 DroneHud 里。
+        if (!drone.hasBattery()) {
+            return NO_BATTERY_SEVERITY;
+        }
+        double onset = drone.staticOnset();
+        double span = drone.linkRange() - onset;
         if (span <= 0.0D) {
             return 0.0D;
         }
-        return Mth.clamp((range - ReconDroneEntity.STATIC_ONSET) / span, 0.0D, 1.0D);
+        return Mth.clamp((range - onset) / span, 0.0D, 1.0D);
     }
 
     /**
@@ -205,6 +226,6 @@ public final class DroneSignal {
     }
 
     private static float radiusFor(Minecraft minecraft, ReconDroneEntity drone) {
-        return (float) (MAX_RADIUS * amount(Math.sqrt(drone.distanceToSqr(minecraft.player))));
+        return (float) (MAX_RADIUS * amount(drone, Math.sqrt(drone.distanceToSqr(minecraft.player))));
     }
 }
