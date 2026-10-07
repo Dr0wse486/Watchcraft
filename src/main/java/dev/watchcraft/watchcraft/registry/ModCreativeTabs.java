@@ -24,6 +24,9 @@ public final class ModCreativeTabs {
                         output.accept(ModItems.DRONE_PROPELLER.get());
                         output.accept(ModItems.RECON_DRONE.get());
                         output.accept(ModItems.CUSTOMIZATION_MODULE.get());
+                        output.accept(ModItems.RECON_BOOST_MODULE.get());
+                        output.accept(ModItems.CONTAINER_MARKER_MODULE.get());
+                        output.accept(ModItems.ALERT_RADAR_MODULE.get());
                         output.accept(ModItems.SIGNAL_MODULE_MK1.get());
                         output.accept(ModItems.SIGNAL_MODULE_MK2.get());
                         output.accept(ModItems.SPEED_MODULE.get());

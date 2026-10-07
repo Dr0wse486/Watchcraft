@@ -337,6 +337,87 @@ def build_attack_module_icon() -> Canvas:
     return canvas
 
 
+# The three sensor boards. Each gets its own hue rather than relying on shape: at sixteen pixels
+# every board is the same green-black rectangle with a small figure on it, so colour is the cue that
+# actually survives a crowded inventory. The hues are the ones the features themselves draw with -
+# amber chests, amber-then-red radar - so the board previews its own output.
+CHEST_WOOD = (132, 92, 50, 255)
+CHEST_WOOD_HI = (182, 132, 78, 255)
+CHEST_AMBER = (250, 199, 117, 255)
+RADAR_NEAR = (240, 190, 90, 255)
+RADAR_MID = (226, 140, 70, 255)
+RADAR_FAR = (214, 78, 72, 255)
+
+
+def build_recon_boost_module_icon() -> Canvas:
+    """Recon package: a view cone widening away from the sensor.
+
+    A cone rather than an eye or a lens. A lens with a handle reads as a magnifier - "search" - and
+    an eye at this size is just an oval, which is the blob the attack board's core already makes.
+    Two straight edges diverging is the one glyph that says "wider field" without help, and it
+    leaves the family's cyan to the speed board's chevrons.
+    """
+    canvas = Canvas(16, 16)
+    _module_board(canvas)
+
+    # Narrow throat at the bottom, opening to the full width of the board.
+    for step in range(6):
+        canvas.set(7 - step, 10 - step, CYAN)
+        canvas.set(8 + step, 10 - step, CYAN)
+
+    # The sensor itself at the apex, and a lit bar across the far end to give the cone a direction.
+    canvas.fill(7, 11, 2, 1, CHIP)
+    canvas.fill(2, 4, 12, 1, CYAN_DEEP)
+
+    return canvas
+
+
+def build_container_marker_module_icon() -> Canvas:
+    """Container scanner: a chest, in the same amber the on-screen markers use.
+
+    Sharing the marker's colour is the whole point - the board and the squares it draws are one
+    feature, and the amber is what ties them together in the player's head.
+    """
+    canvas = Canvas(16, 16)
+    _module_board(canvas)
+
+    canvas.fill(4, 5, 8, 6, CHEST_WOOD)
+    canvas.outline(4, 5, 8, 6, CHEST_WOOD_HI)
+    # The lid seam: one horizontal is what turns a crate into a chest.
+    canvas.fill(5, 7, 6, 1, CHEST_WOOD_HI)
+    canvas.fill(7, 7, 2, 2, CHEST_AMBER)
+
+    return canvas
+
+
+def build_alert_radar_module_icon() -> Canvas:
+    """Radar: quarter arcs stepping outward from a corner, amber through red.
+
+    The arcs run the same ramp the on-screen alert uses - amber for a mob, red for a player - so
+    the board shows what it is going to draw.
+    """
+    canvas = Canvas(16, 16)
+    _module_board(canvas)
+
+    origin_x, origin_y = 3, 10
+    canvas.fill(origin_x, origin_y, 2, 2, CHIP)
+    canvas.set(origin_x, origin_y, RADAR_NEAR)
+
+    # Hand-placed rather than computed: at these radii a circle routine spends more code on rounding
+    # than the arc has pixels, and the rounding is exactly what makes it wobble.
+    arcs = (
+        (RADAR_NEAR, ((3, 0), (2, 1), (1, 2), (0, 3))),
+        (RADAR_MID, ((5, 0), (5, 1), (4, 2), (4, 3), (3, 4), (2, 4), (1, 5), (0, 5))),
+        (RADAR_FAR, ((7, 0), (7, 1), (6, 2), (6, 3), (5, 4), (5, 5), (4, 5), (3, 6), (2, 6),
+                     (1, 7), (0, 7))),
+    )
+    for colour, pixels in arcs:
+        for dx, dy in pixels:
+            canvas.set(origin_x + dx, origin_y - dy, colour)
+
+    return canvas
+
+
 def _mast(canvas: Canvas, top: int, waves: tuple[int, ...],
           colour: tuple[int, int, int, int]) -> None:
     """An antenna mast with a lit tip and dashes of wavefront either side of it.
@@ -619,6 +700,9 @@ def main() -> None:
     write(build_graphite_electrode_icon(), "textures", "item", "graphite_electrode.png")
     write(build_graphite_battery_icon(), "textures", "item", "graphite_battery.png")
     write(build_attack_module_icon(), "textures", "item", "attack_module.png")
+    write(build_recon_boost_module_icon(), "textures", "item", "recon_boost_module.png")
+    write(build_container_marker_module_icon(), "textures", "item", "container_marker_module.png")
+    write(build_alert_radar_module_icon(), "textures", "item", "alert_radar_module.png")
 
     write(build_workbench_block(), "textures", "block", "module_workbench.png")
     write(build_workbench_gui(), "textures", "gui", "module_workbench.png")

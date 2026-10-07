@@ -275,6 +275,8 @@ public final class ClientEvents {
         // 顺序有意：面罩先铺，标记后压。这样预警的红边框落在面罩的青色边框之上，
         // 而箱子标记不会被仪表盘盖住 —— 两者在操控时是同时存在的。
         DroneMarkerOverlay.render(event.getGuiGraphics());
+        // 被探测警告画在最上层：它是"立刻看一眼"的信息，压在标记与面罩之上才不会被漏掉。
+        DroneDetectWarning.render(event.getGuiGraphics());
     }
 
     /**
@@ -287,6 +289,7 @@ public final class ClientEvents {
     @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         DroneMarkerOverlay.clear();
+        DroneDetectWarning.clear();
     }
 
     @SubscribeEvent

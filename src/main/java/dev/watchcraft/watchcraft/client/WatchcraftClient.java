@@ -1,6 +1,7 @@
 package dev.watchcraft.watchcraft.client;
 
 import dev.watchcraft.watchcraft.Watchcraft;
+import dev.watchcraft.watchcraft.network.DroneAlertPayload;
 import dev.watchcraft.watchcraft.network.DroneLinkPayload;
 import dev.watchcraft.watchcraft.network.DroneScanPayload;
 import dev.watchcraft.watchcraft.registry.ModEntities;
@@ -72,6 +73,7 @@ public final class WatchcraftClient {
     public static void applyClientConfig() {
         DroneController.applyConfig();
         DroneSignal.applyConfig();
+        DroneLcd.applyConfig();
         DroneShake.applyConfig();
         DroneHud.applyConfig();
         DroneMarkerOverlay.applyConfig();
@@ -100,7 +102,6 @@ public final class WatchcraftClient {
         event.register(KeyMappings.RECALL);
         event.register(KeyMappings.ROLL);
         event.register(KeyMappings.DETONATE);
-        event.register(KeyMappings.FOLLOW);
     }
 
     private static void registerScreens(RegisterMenuScreensEvent event) {
@@ -116,7 +117,11 @@ public final class WatchcraftClient {
                 .playToClient(
                         DroneScanPayload.TYPE,
                         DroneScanPayload.STREAM_CODEC,
-                        ClientPayloadHandler::handleScan);
+                        ClientPayloadHandler::handleScan)
+                .playToClient(
+                        DroneAlertPayload.TYPE,
+                        DroneAlertPayload.STREAM_CODEC,
+                        ClientPayloadHandler::handleAlert);
     }
 
     public static ResourceLocation id(String path) {

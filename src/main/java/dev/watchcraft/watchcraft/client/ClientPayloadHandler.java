@@ -1,6 +1,7 @@
 package dev.watchcraft.watchcraft.client;
 
 import dev.watchcraft.watchcraft.entity.ReconDroneEntity;
+import dev.watchcraft.watchcraft.network.DroneAlertPayload;
 import dev.watchcraft.watchcraft.network.DroneLinkPayload;
 import dev.watchcraft.watchcraft.network.DroneScanPayload;
 import net.minecraft.client.Minecraft;
@@ -37,6 +38,16 @@ public final class ClientPayloadHandler {
      */
     public static void handleScan(DroneScanPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> DroneMarkerOverlay.accept(payload));
+    }
+
+    /**
+     * 「你被无人机看到了」。
+     *
+     * <p>唯一一条发给非机主的消息。不做任何过滤 —— 服务端已经限过流（见
+     * {@code ReconDroneEntity#warnDetected}），这边收到就显示。
+     */
+    public static void handleAlert(DroneAlertPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> DroneDetectWarning.accept(payload));
     }
 
     /**

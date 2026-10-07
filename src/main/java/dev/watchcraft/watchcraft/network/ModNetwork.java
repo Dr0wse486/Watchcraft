@@ -4,6 +4,7 @@ import dev.watchcraft.watchcraft.entity.ReconDroneEntity;
 import dev.watchcraft.watchcraft.registry.ModItems;
 import dev.watchcraft.watchcraft.server.DroneSettings;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -24,6 +25,8 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -37,11 +40,34 @@ public final class ModNetwork {
     private ModNetwork() {
     }
 
-    /** Server bound payloads are registered on both sides; the client bound one is client only. */
+    /**
+     * 三个方向各注册各的。
+     *
+     * <p>服务端 -> 客户端的三个包在客户端上带着真正的处理逻辑注册（见
+     * {@code WatchcraftClient#registerPayloads}），但<b>专用服务器上还得再登记一次编码器</b>：
+     * 注册表是发送侧唯一的编码器来源 —— {@code NetworkRegistry#getCodec} 在查不到登记时
+     * 直接返回 {@code null}，于是服务器发出去的每一个快照都会编码失败。客户端那份注册只在
+     * 客户端存在，专用服务器上没人替它登记。
+     *
+     * <p>这里给的是永远不会被调用的空处理：服务器不会收到自己发出的客户端包。写成
+     * {@code DEDICATED_SERVER} 分支而不是无条件登记，是因为客户端上两处都会跑，重复登记
+     * 会直接抛 "already registered"。
+     */
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToServer(DroneActionPayload.TYPE, DroneActionPayload.STREAM_CODEC, ModNetwork::handleAction);
         registrar.playToServer(DroneMovePayload.TYPE, DroneMovePayload.STREAM_CODEC, ModNetwork::handleMove);
+
+        if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+            registrar.playToClient(DroneLinkPayload.TYPE, DroneLinkPayload.STREAM_CODEC, ModNetwork::ignore);
+            registrar.playToClient(DroneScanPayload.TYPE, DroneScanPayload.STREAM_CODEC, ModNetwork::ignore);
+            registrar.playToClient(DroneAlertPayload.TYPE, DroneAlertPayload.STREAM_CODEC, ModNetwork::ignore);
+        }
+    }
+
+    /** 专用服务器上客户端包的占位处理。它不会被调用 —— 服务器不会收到客户端包。 */
+    private static <T extends CustomPacketPayload> void ignore(T payload, IPayloadContext context) {
+        // 故意为空。
     }
 
     public static void sendLinkState(ServerPlayer player, int droneId, boolean linked) {
@@ -101,7 +127,6 @@ public final class ModNetwork {
             case DroneActionPayload.ACTION_INTERACT -> interact(level, player, payload.droneId());
             case DroneActionPayload.ACTION_CHARGE -> charge(level, player, payload.droneId());
             case DroneActionPayload.ACTION_DETONATE -> detonate(level, player, payload.droneId());
-            case DroneActionPayload.ACTION_FOLLOW -> toggleFollow(level, player);
             default -> {
             }
         }
@@ -208,22 +233,6 @@ public final class ModNetwork {
         if (drone.beginRecall()) {
             player.displayClientMessage(Component.translatable("message.watchcraft.recalling"), true);
         }
-    }
-
-    /**
-     * 切换跟随。
-     *
-     * <p>和收回一样自己找无人机，不看 id。权限、是否已引爆的判定都在
-     * {@link ReconDroneEntity#toggleFollow} 里 —— 这里只负责找到那一架。
-     */
-    private static void toggleFollow(ServerLevel level, ServerPlayer player) {
-        ReconDroneEntity drone = ReconDroneEntity.findDeployed(player);
-        if (drone == null) {
-            return;
-        }
-        boolean following = drone.toggleFollow(player);
-        player.displayClientMessage(Component.translatable(
-                following ? "message.watchcraft.follow_on" : "message.watchcraft.follow_off"), true);
     }
 
     private static void handleMove(DroneMovePayload payload, IPayloadContext context) {
