@@ -31,6 +31,17 @@ public final class DroneModules {
     public static final int SIGNAL_MK2 = 8;
     /** Governor removal: raises the cruise ceiling to the speed module's target. */
     public static final int SPEED = 16;
+    /**
+     * Recon package: widens the cone and the reach the drone scans with.
+     *
+     * <p>Deliberately a gate rather than a convenience: the two boards that consume what the drone
+     * sees are useless on a short-sighted airframe, so this sits in front of both of them.
+     */
+    public static final int RECON_BOOST = 32;
+    /** Radar: tells the owner when hostiles - and players - are closing in. Needs {@link #RECON_BOOST}. */
+    public static final int ALERT_RADAR = 64;
+    /** Container scanner: marks chests, barrels and the like on the owner's screen. Needs {@link #RECON_BOOST}. */
+    public static final int CONTAINER_MARKER = 128;
 
     /**
      * Every bit this build knows about.
@@ -39,7 +50,8 @@ public final class DroneModules {
      * client, and the drone's tooltip walks the fitted bits. Both used to spell the flags out by
      * hand, which silently drops a new module the moment one is added - so they read this instead.
      */
-    public static final int ALL = CUSTOMIZATION | ATTACK | SIGNAL_MK1 | SIGNAL_MK2 | SPEED;
+    public static final int ALL = CUSTOMIZATION | ATTACK | SIGNAL_MK1 | SIGNAL_MK2 | SPEED
+            | RECON_BOOST | ALERT_RADAR | CONTAINER_MARKER;
 
     /**
      * The same flags, in the order they should be listed.
@@ -49,7 +61,8 @@ public final class DroneModules {
      * lookup below. It matches the creative tab's order, so a drone's tooltip lists its modules in
      * the same sequence the player picked them up in.
      */
-    public static final int[] FLAGS = {CUSTOMIZATION, SIGNAL_MK1, SIGNAL_MK2, SPEED, ATTACK};
+    public static final int[] FLAGS = {CUSTOMIZATION, RECON_BOOST, CONTAINER_MARKER, ALERT_RADAR,
+            SIGNAL_MK1, SIGNAL_MK2, SPEED, ATTACK};
 
     private DroneModules() {
     }
@@ -98,6 +111,9 @@ public final class DroneModules {
             case SIGNAL_MK1 -> new ItemStack(ModItems.SIGNAL_MODULE_MK1.get());
             case SIGNAL_MK2 -> new ItemStack(ModItems.SIGNAL_MODULE_MK2.get());
             case SPEED -> new ItemStack(ModItems.SPEED_MODULE.get());
+            case RECON_BOOST -> new ItemStack(ModItems.RECON_BOOST_MODULE.get());
+            case ALERT_RADAR -> new ItemStack(ModItems.ALERT_RADAR_MODULE.get());
+            case CONTAINER_MARKER -> new ItemStack(ModItems.CONTAINER_MARKER_MODULE.get());
             default -> ItemStack.EMPTY;
         };
     }

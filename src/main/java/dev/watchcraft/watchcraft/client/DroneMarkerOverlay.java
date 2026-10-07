@@ -1,5 +1,7 @@
 package dev.watchcraft.watchcraft.client;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import dev.watchcraft.watchcraft.config.WatchcraftConfig;
 import dev.watchcraft.watchcraft.entity.ReconDroneEntity;
 import dev.watchcraft.watchcraft.network.DroneScanPayload;
@@ -7,10 +9,15 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.PlayerFaceRenderer;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.resources.PlayerSkin;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -48,14 +55,28 @@ public final class DroneMarkerOverlay {
     /** 文字底衬，避免贴在雪地或天空上读不出来。 */
     private static final int MARKER_HALO = 0x99101418;
 
-    /** 预警红。和原版低血红屏同色系，但只有边框、且会脉动，见 {@link #drawAlert}。 */
-    private static final int ALERT_RGB = 0xE24B4A;
+    /** 预警边框：怪物用琥珀橙，玩家用红。分级而不是逐种配色，只回答"来的东西会不会说话"。 */
+    private static final int ALERT_RGB_MONSTER = 0xE2A03C;
+    private static final int ALERT_RGB_PLAYER = 0xE24B4A;
+
+    /** 驾驶者本体标记。中性白，读作"这是我"，和箱子（琥珀）、威胁（红/橙）都不撞。 */
+    private static final int PILOT_EDGE = 0xFFE8F2FA;
+    private static final int PILOT_HALO = 0x99101418;
+    private static final int PILOT_TEXT = 0xFFE8F2FA;
+
+    /** 被探测到的玩家标记：同一个中性白，但形状是旋转的方框，读作"这是目标"。 */
+    private static final int TARGET_EDGE = 0xFFE8F2FA;
+    private static final int TARGET_HALO = 0x99101418;
+    /** 方框的半径（像素）与转一圈的周期（毫秒）。 */
+    private static final int TARGET_RADIUS = 7;
+    private static final long TARGET_SPIN_MS = 2600L;
 
     // ------------------------------------------------------------------ 配置镜像
 
     private static boolean showDistance = true;
     private static boolean edgeIndicator = true;
     private static int maxLabels = 16;
+    private static boolean pilotMarker = true;
 
     private static boolean alertShowBorder = true;
     private static boolean alertShowDirection = true;
@@ -68,8 +89,10 @@ public final class DroneMarkerOverlay {
     private static List<BlockPos> chests = List.of();
     private static int threatPercent;
     private static BlockPos threatPos;
-    /** 无人机此刻是否在跟随。显示在左下角那行状态里，让玩家知道按键有没有生效。 */
-    private static boolean following;
+    /** 最近的威胁是不是玩家。true 画红，false（怪物）画橙。 */
+    private static boolean threatIsPlayer;
+    /** 本轮被无人机标记到的玩家实体 id。位置由客户端每帧自己投影，所以这里只存 id。 */
+    private static List<Integer> targets = List.of();
 
     /** 主视角的垂直视场角（度）。0 表示还没收到，退回读选项里的值。 */
     private static double fovDegrees;
@@ -93,6 +116,7 @@ public final class DroneMarkerOverlay {
         showDistance = WatchcraftConfig.CLIENT.markerShowDistance.get();
         edgeIndicator = WatchcraftConfig.CLIENT.markerEdgeIndicator.get();
         maxLabels = WatchcraftConfig.CLIENT.markerMaxLabels.get();
+        pilotMarker = WatchcraftConfig.CLIENT.markerPilotMarker.get();
 
         alertShowBorder = WatchcraftConfig.CLIENT.alertShowBorder.get();
         alertShowDirection = WatchcraftConfig.CLIENT.alertShowDirection.get();
@@ -105,8 +129,9 @@ public final class DroneMarkerOverlay {
     public static void accept(DroneScanPayload payload) {
         chests = payload.chests();
         threatPercent = payload.threatPercent();
-        threatPos = payload.hasThreat() ? payload.threatPos() : null;
-        following = payload.following();
+        threatPos = payload.hasThreat() ? payload.threat() : null;
+        threatIsPlayer = payload.threatIsPlayer();
+        targets = payload.players();
     }
 
     /** 链路断开、无人机消失时调用，把屏幕清干净。 */
@@ -114,7 +139,8 @@ public final class DroneMarkerOverlay {
         chests = List.of();
         threatPercent = DroneScanPayload.NO_THREAT;
         threatPos = null;
-        following = false;
+        threatIsPlayer = false;
+        targets = List.of();
     }
 
     /** 由 {@link ClientEvents#onComputeFov} 在主视角那一次调用。 */
@@ -125,7 +151,11 @@ public final class DroneMarkerOverlay {
     // ------------------------------------------------------------------ 渲染
 
     public static void render(GuiGraphics graphics) {
-        if (chests.isEmpty() && threatPercent <= DroneScanPayload.NO_THREAT) {
+        // 操控中要额外画本体标记，所以"什么都没收到"不再是提前退出的充分条件。
+        boolean pilot = DroneController.isLinked();
+        if (chests.isEmpty() && targets.isEmpty()
+                && threatPercent <= DroneScanPayload.NO_THREAT
+                && !(pilot && pilotMarker)) {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
@@ -152,20 +182,23 @@ public final class DroneMarkerOverlay {
             drawAlert(graphics, camera, minecraft.player.position(), width, height);
         }
         drawChests(graphics, minecraft, camera, width, height);
+        // 目标标记和箱子标记同一档：无人机在外面看到的，放飞者在哪儿都该看到。
+        drawTargets(graphics, minecraft, camera, width, height);
+        if (pilot && pilotMarker) {
+            // 本体标记反过来 —— 只有连线时才需要，没连线时相机本来就在本体身上。
+            drawPilotMarker(graphics, minecraft, camera, width, height);
+        }
         drawStatus(graphics, minecraft.font, height);
     }
 
     /**
-     * 左下角的一行状态：箱子数量、警戒与跟随。
+     * 左下角的一行状态：箱子、目标与警戒的数量。
      *
      * <p>标记本身已经说明了位置，但"有几个"这个总量是看不出来的 —— 尤其是箱子在画面外、
      * 只剩边缘方向点的时候。这一行就是那份总量。
      *
      * <p>只在<b>未连线</b>时画。连线时座舱有自己的仪表盘与底部按键条，位置正好撞上，
      * 而且那时候玩家看得见无人机自己的视野，不需要这层转述。
-     *
-     * <p>跟随状态是搭在这一行里的，不单独触发它 —— 否则无人机会一直顶着一行常驻文字，
-     * 而它大部分时间都在跟随。开关的即时反馈由聊天栏那条消息负责。
      */
     private static void drawStatus(GuiGraphics graphics, Font font, int height) {
         if (DroneController.isLinked()) {
@@ -175,11 +208,11 @@ public final class DroneMarkerOverlay {
         if (!chests.isEmpty()) {
             parts.add(Component.translatable("hud.watchcraft.chests").getString() + " ×" + chests.size());
         }
+        if (!targets.isEmpty()) {
+            parts.add(Component.translatable("hud.watchcraft.targets").getString() + " ×" + targets.size());
+        }
         if (threatPercent > DroneScanPayload.NO_THREAT) {
             parts.add(Component.translatable("hud.watchcraft.alert").getString());
-        }
-        if (following) {
-            parts.add(Component.translatable("hud.watchcraft.following").getString());
         }
         if (parts.isEmpty()) {
             return;
@@ -232,7 +265,7 @@ public final class DroneMarkerOverlay {
                 // 在相机背后。投影会翻转，所以只给一个边缘指示，不画标签。
                 // 方向仍然取 (-sx, -sy)：那正是正前方时投影的方向，忽略深度的符号即可。
                 if (edgeIndicator && drawn < maxLabels) {
-                    drawEdgeIndicator(graphics, width, height, -sx, -sy);
+                    drawEdgeIndicator(graphics, width, height, -sx, -sy, MARKER_EDGE, MARKER_FILL);
                     drawn++;
                 }
                 continue;
@@ -242,7 +275,8 @@ public final class DroneMarkerOverlay {
 
             if (px < -24.0D || py < -24.0D || px > width + 24.0D || py > height + 24.0D) {
                 if (edgeIndicator && drawn < maxLabels) {
-                    drawEdgeIndicator(graphics, width, height, px - width * 0.5D, py - height * 0.5D);
+                    drawEdgeIndicator(graphics, width, height, px - width * 0.5D, py - height * 0.5D,
+                            MARKER_EDGE, MARKER_FILL);
                     drawn++;
                 }
                 continue;
@@ -276,13 +310,15 @@ public final class DroneMarkerOverlay {
     }
 
     /**
-     * 把屏幕外的箱子夹到画面边缘，给一个"在那边"的点。
+     * 把屏幕外的目标夹到画面边缘，给一个"在那边"的点。
      *
      * <p>{@code (dx, dy)} 是从屏幕中心指向目标的向量，函数把它推到矩形边框上。用矩形边框
      * 而不是圆形，是因为屏幕本身是矩形，圆形的指示器会在四个角附近显得离边缘很远。
+     *
+     * <p>配色由调用方给：箱子是琥珀，本体是白。三种标记共用同一套几何，换的只是两个色值。
      */
     private static void drawEdgeIndicator(GuiGraphics graphics, int width, int height,
-                                          double dx, double dy) {
+                                          double dx, double dy, int edge, int fill) {
         double cx = width * 0.5D;
         double cy = height * 0.5D;
         double length = Math.hypot(dx, dy);
@@ -302,8 +338,225 @@ public final class DroneMarkerOverlay {
         int x = (int) Math.round(cx + ux * t);
         int y = (int) Math.round(cy + uy * t);
         graphics.fill(x - 4, y - 4, x + 4, y + 4, MARKER_HALO);
-        graphics.fill(x - 3, y - 3, x + 3, y + 3, MARKER_EDGE);
-        graphics.fill(x - 2, y - 2, x + 2, y + 2, MARKER_FILL);
+        graphics.fill(x - 3, y - 3, x + 3, y + 3, edge);
+        graphics.fill(x - 2, y - 2, x + 2, y + 2, fill);
+    }
+
+    // ------------------------------------------------------------------ 被探测到的玩家
+
+    /**
+     * 给无人机这一轮标记到的每个玩家画一个旋转的白色镂空方框。
+     *
+     * <p>这是无人机在外面看到的<b>人</b>：被标记的人可能在自己身体几百格之外，光靠原版的发光
+     * 描边只能看出"那儿有个东西亮着"，看不出那是个人、也看不出它正被盯着。方框转起来就是为了
+     * 这个 —— 静止的方框和箱子标记撞车，转的方框读作"这是目标"。
+     *
+     * <p>和箱子标记同一档：<b>连线与否都画</b>。无人机在外面飞、玩家在别处做自己的事，正是
+     * 这套侦察回传存在的理由，没道理只有坐进驾驶舱才看得到。
+     *
+     * <p>位置是<b>纯客户端</b>算的：服务端只发实体 id，投影用的是相机自己的基向量，
+     * 和本体标记、箱子标记同一套。所以标记贴着人走，不会跟着 200 毫秒一包的节奏跳。
+     */
+    private static void drawTargets(GuiGraphics graphics, Minecraft minecraft, Camera camera,
+                                    int width, int height) {
+        if (targets.isEmpty()) {
+            return;
+        }
+        double fov = fovDegrees > 1.0D ? fovDegrees : minecraft.options.fov().get();
+        double focal = (height * 0.5D) / Math.tan(Math.toRadians(fov) * 0.5D);
+
+        Vec3 eye = camera.getPosition();
+        Vector3f forward = camera.getLookVector();
+        Vector3f up = camera.getUpVector();
+        Vector3f left = camera.getLeftVector();
+
+        // 用挂钟而不是刻：转一圈两秒半，按刻算一帧一帧都是整数度，转起来是跳的。
+        double spin = (System.currentTimeMillis() % TARGET_SPIN_MS)
+                / (double) TARGET_SPIN_MS * 360.0D;
+
+        for (int id : targets) {
+            Entity entity = minecraft.level.getEntity(id);
+            if (!(entity instanceof LivingEntity target) || target.isRemoved()) {
+                continue;
+            }
+            Vec3 centre = target.getBoundingBox().getCenter();
+            double rx = centre.x - eye.x;
+            double ry = centre.y - eye.y;
+            double rz = centre.z - eye.z;
+
+            double depth = rx * forward.x() + ry * forward.y() + rz * forward.z();
+            double sx = rx * left.x() + ry * left.y() + rz * left.z();
+            double sy = rx * up.x() + ry * up.y() + rz * up.z();
+
+            if (depth <= 0.15D) {
+                // 在相机背后。方向和箱子那边一样取 (-sx, -sy)，忽略深度的符号。
+                if (edgeIndicator) {
+                    drawEdgeIndicator(graphics, width, height, -sx, -sy, TARGET_EDGE, TARGET_EDGE);
+                }
+                continue;
+            }
+            double px = width * 0.5D - sx * focal / depth;
+            double py = height * 0.5D - sy * focal / depth;
+            if (px < -24.0D || py < -24.0D || px > width + 24.0D || py > height + 24.0D) {
+                if (edgeIndicator) {
+                    drawEdgeIndicator(graphics, width, height,
+                            px - width * 0.5D, py - height * 0.5D, TARGET_EDGE, TARGET_EDGE);
+                }
+                continue;
+            }
+            drawTargetSquare(graphics, (int) Math.round(px), (int) Math.round(py), spin);
+        }
+    }
+
+    /**
+     * 一个旋转的镂空方框。
+     *
+     * <p>旋转靠 {@code GuiGraphics#pose()}：它填的每个矩形都走 {@code pose.last().pose()}，
+     * 所以把平移和绕 Z 的旋转压进去，四条边就跟着转 —— 只用 {@code fill} 的话只能画出正着的
+     * 方框，没有别的办法。
+     *
+     * <p>先画一个粗一圈的深色方框当描边，再压上白色的那一圈。白线压在雪地、水面或天空上会
+     * 糊掉，{@code GuiGraphics} 又没有描边这个概念，叠两层是最省事的等效做法。
+     */
+    private static void drawTargetSquare(GuiGraphics graphics, int x, int y, double angle) {
+        PoseStack pose = graphics.pose();
+        pose.pushPose();
+        pose.translate(x, y, 0.0F);
+        pose.mulPose(Axis.ZP.rotationDegrees((float) angle));
+        square(graphics, TARGET_RADIUS + 1, 2, TARGET_HALO);
+        square(graphics, TARGET_RADIUS, 1, TARGET_EDGE);
+        pose.popPose();
+    }
+
+    /**
+     * 一个正的空心框，画在以原点为中心的位置上。
+     *
+     * <p>{@code half} 是外沿到中心的距离，{@code thickness} 是边的粗细。上下两条横边各画满，
+     * 左右两条竖边在横边之间收住 —— 不收的话四个角会叠出更亮的一块。
+     */
+    private static void square(GuiGraphics graphics, int half, int thickness, int colour) {
+        int lo = -half;
+        int hi = half + 1;
+        graphics.fill(lo, lo, hi, lo + thickness, colour);
+        graphics.fill(lo, hi - thickness, hi, hi, colour);
+        graphics.fill(lo, lo + thickness, lo + thickness, hi - thickness, colour);
+        graphics.fill(hi - thickness, lo + thickness, hi, hi - thickness, colour);
+    }
+
+    // ------------------------------------------------------------------ 驾驶者本体标记
+
+    /**
+     * 操控中，在自己本体所在的位置画一个标记。
+     *
+     * <p>镜头在无人机上，身体可能留在几百格之外 —— 玩家要"回去"的时候得先知道家在哪。
+     * 这个位置是<b>纯客户端</b>的：本体就是 {@code minecraft.player}，不需要服务端发任何东西。
+     * 也因此它只在连线时出现，没连线时相机本来就在本体身上，画了等于在准星底下贴一张纸。
+     *
+     * <p>样式是<b>玩家头像</b>：一个深色底衬 + 一圈细白描边 + 自己的皮肤 + 一个"本体"标签。
+     * 一开始画的是空心方框加中心一点，但那个形状和箱子标记的方框撞车 —— 两个都是方块，
+     * 在远处一眼分不出"那儿有个箱子"和"那是我"。头像没有这个问题：它只能是人。
+     *
+     * <p>尺寸固定，不随距离缩。它是指示物不是世界里的物件，缩到看不见就等于没有。
+     *
+     * <p>⚠️ <b>画在"这架无人机的驾驶员"身上，不是画在 {@code minecraft.player} 身上。</b>
+     * 正常情况两者是同一个实体，看不出区别；但像假人（fake player）那类会把客户端玩家整个
+     * 换掉的模组，{@code minecraft.player} 会变成假人，而链路其实还挂在原玩家身上 ——
+     * 标记就跑到假人头上去了，玩家反而找不到自己的身体。驾驶员的实体 id 是同步数据
+     * （{@link ReconDroneEntity#getPilotId()}），客户端查得到，所以直接用它。
+     */
+    private static void drawPilotMarker(GuiGraphics graphics, Minecraft minecraft, Camera camera,
+                                        int width, int height) {
+        Entity body = pilotBody(minecraft);
+        if (body == null) {
+            return;
+        }
+        Vec3 target = body.getEyePosition();
+        double fov = fovDegrees > 1.0D ? fovDegrees : minecraft.options.fov().get();
+        double focal = (height * 0.5D) / Math.tan(Math.toRadians(fov) * 0.5D);
+
+        Vec3 eye = camera.getPosition();
+        Vector3f forward = camera.getLookVector();
+        Vector3f up = camera.getUpVector();
+        Vector3f left = camera.getLeftVector();
+
+        double rx = target.x - eye.x;
+        double ry = target.y - eye.y;
+        double rz = target.z - eye.z;
+
+        double depth = rx * forward.x() + ry * forward.y() + rz * forward.z();
+        double sx = rx * left.x() + ry * left.y() + rz * left.z();
+        double sy = rx * up.x() + ry * up.y() + rz * up.z();
+
+        if (depth <= 0.15D) {
+            // 在相机背后。方向和箱子那边一样取 (-sx, -sy)，忽略深度的符号。
+            if (edgeIndicator) {
+                drawEdgeIndicator(graphics, width, height, -sx, -sy, PILOT_EDGE, PILOT_EDGE);
+            }
+            return;
+        }
+        double px = width * 0.5D - sx * focal / depth;
+        double py = height * 0.5D - sy * focal / depth;
+        if (px < -24.0D || py < -24.0D || px > width + 24.0D || py > height + 24.0D) {
+            if (edgeIndicator) {
+                drawEdgeIndicator(graphics, width, height, px - width * 0.5D, py - height * 0.5D,
+                        PILOT_EDGE, PILOT_EDGE);
+            }
+            return;
+        }
+
+        int x = (int) Math.round(px);
+        int y = (int) Math.round(py);
+        // 16 是原版头像渲染最干净的一档（8×8 的贴图区正好整数放大两倍），和探测警告横幅同款。
+        int size = 16;
+        // 不能叫 left —— 上面已经有一个 left 是相机的左向量。
+        int headLeft = x - size / 2;
+        int headTop = y - size / 2;
+
+        // 深色底衬。本体常常在雪地、水面或天空前面，没有它头像的浅色部分会糊进背景里。
+        graphics.fill(headLeft - 2, headTop - 2, headLeft + size + 2, headTop + size + 2, PILOT_HALO);
+        // 一圈细白描边，把头像和它背后的任何东西切开。
+        graphics.fill(headLeft - 1, headTop - 1, headLeft + size + 1, headTop, PILOT_EDGE);
+        graphics.fill(headLeft - 1, headTop + size, headLeft + size + 1, headTop + size + 1, PILOT_EDGE);
+        graphics.fill(headLeft - 1, headTop - 1, headLeft, headTop + size + 1, PILOT_EDGE);
+        graphics.fill(headLeft + size, headTop - 1, headLeft + size + 1, headTop + size + 1, PILOT_EDGE);
+
+        PlayerFaceRenderer.draw(graphics, skinOf(body, minecraft), headLeft, headTop, size);
+
+        String text = Component.translatable("hud.watchcraft.pilot").getString();
+        int textWidth = minecraft.font.width(text);
+        int textX = x - textWidth / 2;
+        int textY = headTop + size + 4;
+        graphics.fill(textX - 2, textY - 1, textX + textWidth + 2, textY + 9, PILOT_HALO);
+        graphics.drawString(minecraft.font, text, textX, textY, PILOT_TEXT, false);
+    }
+
+    /**
+     * {@return 该被标上"本体"的那具身体}
+     *
+     * <p>先问无人机"谁在驾驶你"（同步数据里的实体 id），查不到再退回 {@code minecraft.player}。
+     * 见 {@link #drawPilotMarker} 的注释。
+     */
+    @Nullable
+    private static Entity pilotBody(Minecraft minecraft) {
+        Entity linked = minecraft.level.getEntity(DroneController.getLinkedId());
+        if (linked instanceof ReconDroneEntity drone) {
+            int pilotId = drone.getPilotId();
+            if (pilotId >= 0) {
+                Entity pilot = minecraft.level.getEntity(pilotId);
+                if (pilot != null) {
+                    return pilot;
+                }
+            }
+        }
+        return minecraft.player;
+    }
+
+    /** {@return 这具身体该用的头像皮肤}，非玩家就退回本机玩家的。 */
+    private static PlayerSkin skinOf(Entity body, Minecraft minecraft) {
+        if (body instanceof AbstractClientPlayer player) {
+            return player.getSkin();
+        }
+        return minecraft.player.getSkin();
     }
 
     // ------------------------------------------------------------------ 预警边框
@@ -352,6 +605,7 @@ public final class DroneMarkerOverlay {
         }
 
         int rings = Math.min(40, Math.min(width, height) / 4);
+        int colour = threatIsPlayer ? ALERT_RGB_PLAYER : ALERT_RGB_MONSTER;
         for (int i = 0; i < rings; i++) {
             double falloff = 1.0D - (double) i / rings;
             double base = alpha * falloff * falloff;
@@ -364,16 +618,16 @@ public final class DroneMarkerOverlay {
             int aRight = alphaByte(base * right);
 
             if (aTop > 0) {
-                graphics.fill(i, i, width - i, i + 1, (aTop << 24) | ALERT_RGB);
+                graphics.fill(i, i, width - i, i + 1, (aTop << 24) | colour);
             }
             if (aBottom > 0) {
-                graphics.fill(i, height - i - 1, width - i, height - i, (aBottom << 24) | ALERT_RGB);
+                graphics.fill(i, height - i - 1, width - i, height - i, (aBottom << 24) | colour);
             }
             if (aLeft > 0) {
-                graphics.fill(i, i, i + 1, height - i, (aLeft << 24) | ALERT_RGB);
+                graphics.fill(i, i, i + 1, height - i, (aLeft << 24) | colour);
             }
             if (aRight > 0) {
-                graphics.fill(width - i - 1, i, width - i, height - i, (aRight << 24) | ALERT_RGB);
+                graphics.fill(width - i - 1, i, width - i, height - i, (aRight << 24) | colour);
             }
         }
     }

@@ -54,6 +54,7 @@ public final class WatchcraftConfig {
 
         public final ModConfigSpec.DoubleValue moduleSignalRange;
         public final ModConfigSpec.DoubleValue moduleSpeedMultiplier;
+        public final ModConfigSpec.DoubleValue moduleReconBoost;
 
         public final ModConfigSpec.IntValue batteryDrainTicks;
         public final ModConfigSpec.IntValue batteryRecallTicks;
@@ -83,16 +84,10 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.BooleanValue alertExcludeNeutral;
         public final ModConfigSpec.BooleanValue alertLineOfSight;
         public final ModConfigSpec.IntValue alertInterval;
+        public final ModConfigSpec.BooleanValue alertIgnoreNamesake;
 
-        public final ModConfigSpec.BooleanValue followEnabled;
-        public final ModConfigSpec.DoubleValue followDistance;
-        public final ModConfigSpec.DoubleValue followHeight;
-        public final ModConfigSpec.DoubleValue followGain;
-        public final ModConfigSpec.DoubleValue followMaxSpeed;
-        public final ModConfigSpec.DoubleValue followAccel;
-        public final ModConfigSpec.DoubleValue followTurnSmoothing;
-        public final ModConfigSpec.DoubleValue followRecallDistance;
-        public final ModConfigSpec.DoubleValue followClearance;
+        public final ModConfigSpec.BooleanValue detectAlertEnabled;
+        public final ModConfigSpec.IntValue detectAlertInterval;
 
         public final ModConfigSpec.DoubleValue bankGain;
         public final ModConfigSpec.DoubleValue maxBank;
@@ -163,6 +158,12 @@ public final class WatchcraftConfig {
                             + "而服务端按 maxStep（默认 1.8 格/包）逐包校验，"
                             + "倍率再高就会出现合法位移被服务端整包丢弃、无人机一卡一卡的情况")
                     .defineInRange("speedMultiplier", 1.5D, 1.0D, 2.0D);
+            moduleReconBoost = builder
+                    .comment("侦查加强模块把扫描半径与扫描锥角同时放大的倍率。"
+                            + "默认 1.5 时半径 48 → 72 格、锥角 110° → 165°。"
+                            + "两个数一起放大是有意的：只放半径会得到一根很长的细管子，"
+                            + "只放锥角会得到一大片近处的视野，都不像「看得更远」")
+                    .defineInRange("reconBoost", 1.5D, 1.0D, 4.0D);
             builder.pop();
 
             builder.comment("电池：耗电速度与回收时长").push("battery");
@@ -264,48 +265,26 @@ public final class WatchcraftConfig {
             alertInterval = builder
                     .comment("两轮威胁扫描之间的刻数，比箱子扫描快得多 —— 怪会动")
                     .defineInRange("interval", 4, 1, 200);
+            alertIgnoreNamesake = builder
+                    .comment("把「与机主或驾驶员同名的玩家」也算作自己人，不报成敌对玩家。"
+                            + "这是给假人（fake player）模组留的口子：假人是另一个真正的 Player 实体，"
+                            + "UUID 与本体不同，只有名字是本体名字的拷贝。关掉它，"
+                            + "无人机就会把操作者的复制品当成陌生玩家报红。"
+                            + "代价是离线（盗版）服务器上两个重名玩家会互相看不见 —— 默认开启，"
+                            + "因为误报一个「敌人」比漏报更烦人")
+                    .define("ignoreNamesake", true);
             builder.pop();
 
-            builder.comment("跟随：无人机自己在放飞者身后飞，一边跟着走一边侦察。"
-                    + "这是「不用坐进驾驶舱也能享受标记」这条需求的落点 —— 无人机是个哨兵，"
-                    + "不是一台要人开的载具。驾驶员接管时自动暂停，松开后恢复。").push("follow");
-            followEnabled = builder
-                    .comment("放飞后是否默认进入跟随。关掉则无人机停在原地当固定哨兵")
+            builder.comment("反侦察预警：被无人机扫到的玩家会收到「探测到无人机」的警告。"
+                    + "这是默认功能而不是配件 —— 无人机标记别人，别人也该知道自己在被标记。"
+                    + "这里只留一个给纯 PvE 服务器关掉它的口子").push("detectAlert");
+            detectAlertEnabled = builder
+                    .comment("是否向被扫到的玩家发送警告")
                     .define("enabled", true);
-            followDistance = builder
-                    .comment("跟在玩家身后的水平距离（格）。刻意不做成「一直在头顶」 —— "
-                            + "那样会挡住玩家的视野，而且看起来不像在跟随，像在吊着")
-                    .defineInRange("distance", 4.0D, 1.0D, 24.0D);
-            followHeight = builder
-                    .comment("相对玩家的高度（格）。天花板低时会自动压低，见 clearance")
-                    .defineInRange("height", 4.0D, 1.0D, 24.0D);
-            followGain = builder
-                    .comment("速度控制器的增益：离目标点每远一格，速度加多少（格/刻/格）。"
-                            + "这条曲线是跟随能不能跟上的关键 —— 恒定速度不行，"
-                            + "因为无人机的手动飞行上限 0.24 比玩家疾跑的 0.28 还慢")
-                    .defineInRange("gain", 0.08D, 0.01D, 1.0D);
-            followMaxSpeed = builder
-                    .comment("跟随的最高速度（格/刻）。必须高于 flightSpeed(0.24)，否则跟不上"
-                            + "疾跑的玩家；0.55 约合 11 m/s，能追上疾跑，但远低于冲刺的 1.45")
-                    .defineInRange("maxSpeed", 0.55D, 0.05D, 4.0D);
-            followAccel = builder
-                    .comment("速度每刻朝目标值收敛的比例，0~1。这是「跟随手感」的主要旋钮："
-                            + "调小起步与刹车都更柔，调大更跟手但会有顿挫")
-                    .defineInRange("accel", 0.25D, 0.01D, 1.0D);
-            followTurnSmoothing = builder
-                    .comment("尾随方向每刻朝玩家的前进方向收敛的比例，0~1。"
-                            + "方向取的是「移动方向」而不是「视线方向」—— 取视线的话玩家一转头"
-                            + "无人机就绕着人转，很晕")
-                    .defineInRange("turnSmoothing", 0.08D, 0.005D, 1.0D);
-            followRecallDistance = builder
-                    .comment("离放飞者超过这个距离就直接收回（格）。这不是常规路径而是失败检测："
-                            + "跟随时本不该拉开距离，能拉开就说明出了事 —— 传送、鞘翅、"
-                            + "卡在方块里、区块边界抖动。它顺带把「传送后横穿世界」也一并挡掉了")
-                    .defineInRange("recallDistance", 48.0D, 8.0D, 256.0D);
-            followClearance = builder
-                    .comment("与天花板的净空（格）。玩家走进洞穴或室内时，height 那个高度会落在"
-                            + "岩石里，所以要向上探一层顶，把目标高度压到天花板之下")
-                    .defineInRange("clearance", 1.5D, 0.5D, 8.0D);
+            detectAlertInterval = builder
+                    .comment("同一个玩家最短多少刻收到一次警告。40 刻 = 2 秒："
+                            + "生物扫描每两刻跑一次，不记时间的话站在视野里会被每两刻提醒一次")
+                    .defineInRange("interval", 40, 10, 600);
             builder.pop();
 
             builder.comment("转弯倾斜（机身与镜头共用）").push("bank");
@@ -387,6 +366,10 @@ public final class WatchcraftConfig {
 
         public final ModConfigSpec.DoubleValue signalMaxBlurRadius;
 
+        public final ModConfigSpec.BooleanValue lcdEnabled;
+        public final ModConfigSpec.DoubleValue lcdStrength;
+        public final ModConfigSpec.DoubleValue lcdPixelPitch;
+
         public final ModConfigSpec.BooleanValue detonationShakeEnabled;
         public final ModConfigSpec.DoubleValue detonationShakeSeconds;
         public final ModConfigSpec.DoubleValue detonationShakeDisplacement;
@@ -399,6 +382,7 @@ public final class WatchcraftConfig {
         public final ModConfigSpec.BooleanValue markerShowDistance;
         public final ModConfigSpec.BooleanValue markerEdgeIndicator;
         public final ModConfigSpec.IntValue markerMaxLabels;
+        public final ModConfigSpec.BooleanValue markerPilotMarker;
 
         public final ModConfigSpec.BooleanValue alertShowBorder;
         public final ModConfigSpec.BooleanValue alertShowDirection;
@@ -498,6 +482,26 @@ public final class WatchcraftConfig {
                     .defineInRange("maxBlurRadius", 6.0D, 0.0D, 32.0D);
             builder.pop();
 
+            builder.comment("液晶滤镜：让无人机的画面看起来是「隔着一块屏幕」，"
+                    + "而不是「一个玩家在天上飞」。只影响操控时的世界画面，"
+                    + "面罩、准星、读数与发光描边都叠在它上面，依旧锐利").push("lcd");
+            lcdEnabled = builder
+                    .comment("总开关。关掉时着色器走单次采样直通，画面回到干净的渲染结果")
+                    .define("enabled", true);
+            lcdStrength = builder
+                    .comment("整体轻重，0~1。1 是设计值：黑矩阵清楚可见，但还不至于看久了眼酸。"
+                            + "0.5 左右是「隐约觉得有块屏」")
+                    .defineInRange("strength", 1.0D, 0.0D, 1.0D);
+            lcdPixelPitch = builder
+                    .comment("一格像素的边长，单位是设备像素。0 表示跟随分辨率"
+                            + "（一格约占屏幕高度的 1/270，钳在 4~8）：1080p 上约 4、"
+                            + "1440p 上约 5、4K 上 8。默认跟随分辨率是有原因的 —— "
+                            + "同一个 4 像素的格子在 4K 上会细到完全看不见。"
+                            + "非 0 就是显式的设备像素值。下限 4：再小一格就是「缝比开口多」，"
+                            + "读起来是百叶窗不是屏幕")
+                    .defineInRange("pixelPitch", 0.0D, 0.0D, 8.0D);
+            builder.pop();
+
             builder.comment("引爆瞬间的冲击（只影响驾驶员自己的画面与耳朵）").push("detonation");
             detonationShakeEnabled = builder
                     .comment("引爆瞬间的镜头摇晃（位移 + 三轴抖动）总开关。关掉后画面不再晃，"
@@ -537,6 +541,10 @@ public final class WatchcraftConfig {
             markerMaxLabels = builder
                     .comment("同屏最多画几个标记，防止密集仓库把画面糊满")
                     .defineInRange("maxLabels", 16, 1, 128);
+            markerPilotMarker = builder
+                    .comment("操控无人机时，在屏幕上标出自己本体的位置。"
+                            + "镜头在无人机上，身体在几百格之外，没有这个标记就只能靠猜")
+                    .define("pilotMarker", true);
             builder.pop();
 
             builder.comment("敌对预警的画面部分").push("alert");

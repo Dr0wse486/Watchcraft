@@ -290,8 +290,10 @@ public final class DroneShake {
     /**
      * {@return 交给径向模糊后处理链的强度，0 为不动}
      *
-     * <p>链子里跑两遍，第一遍给足、第二遍减半，这样拖影是连续的而不是一层硬边。
-     * 真正的采样数在 {@code radial_blur.fsh} 里，这里只管强度。
+     * <p>链子里跑两遍，第一遍给足、第二遍减半，这样拖影是连续的而不是一层硬边。这个数只是
+     * <b>全局量</b>，两条 pass 各自再乘自己那条的常数（1.0 与 0.5，写在
+     * {@code shaders/post/drone_link.json} 里）—— 因为 {@code PostChain#setUniform} 是对链子里
+     * 所有 pass 一起设的，没法只设一条。真正的采样数在 {@code radial_blur.fsh} 里。
      */
     public static float radialBlur() {
         double elapsed = elapsedSeconds();
@@ -299,11 +301,6 @@ public final class DroneShake {
             return 0.0F;
         }
         return (float) Math.min(1.0D, envelope(elapsed) * RADIAL_BLUR);
-    }
-
-    /** {@return 第二遍径向模糊的强度，是第一遍的一半} */
-    public static float radialBlurSecondPass() {
-        return radialBlur() * 0.5F;
     }
 
     /**

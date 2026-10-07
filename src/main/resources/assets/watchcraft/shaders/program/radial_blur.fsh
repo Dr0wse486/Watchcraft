@@ -11,12 +11,18 @@
 //
 // Strength 为 0 时直接单次采样返回。链子常年挂在后处理里，不这样写的话哪怕不爆炸
 // 也在全屏白跑十个纹理采样。
+//
+// 强度分成两个数，是因为链子里跑两遍、两遍要的量不一样：Strength 是<b>每条 pass 自己的
+// 常数</b>（写在这条 pass 的 json 里），BlurAmount 是<b>每帧一个的全局量</b>（由 Java 写）。
+// 必须这么分：PostChain#setUniform 是<b>对链子里所有 pass 一起设</b>的，没法只设一条 ——
+// 所以两遍想要两个值，就只能让每条 pass 各自声明一个常数，再共同乘一个全局量。
 
 uniform sampler2D DiffuseSampler;
 
 uniform vec2 InSize;
 uniform vec2 Center;
 uniform float Strength;
+uniform float BlurAmount;
 
 in vec2 texCoord;
 
@@ -28,7 +34,8 @@ const int SAMPLES = 10;
 const float MAX_SPREAD = 0.18;
 
 void main() {
-    if (Strength <= 0.001) {
+    float strength = Strength * BlurAmount;
+    if (strength <= 0.001) {
         fragColor = texture(DiffuseSampler, texCoord);
         return;
     }
@@ -42,7 +49,7 @@ void main() {
     vec4 sum = vec4(0.0);
     for (int i = 0; i < SAMPLES; i++) {
         float t = float(i) / float(SAMPLES - 1);
-        vec2 pushed = delta * (1.0 + Strength * MAX_SPREAD * t);
+        vec2 pushed = delta * (1.0 + strength * MAX_SPREAD * t);
         vec2 uv = Center + vec2(pushed.x / aspect, pushed.y);
         sum += texture(DiffuseSampler, clamp(uv, vec2(0.0), vec2(1.0)));
     }

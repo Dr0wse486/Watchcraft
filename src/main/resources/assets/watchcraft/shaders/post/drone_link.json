@@ -68,7 +68,7 @@
             "use_linear_filter": true,
             "uniforms": [
                 { "name": "Center", "values": [ 0.5, 0.5 ] },
-                { "name": "Strength", "values": [ 0.0 ] }
+                { "name": "Strength", "values": [ 1.0 ] }
             ]
         },
         {
@@ -78,8 +78,25 @@
             "use_linear_filter": true,
             "uniforms": [
                 { "name": "Center", "values": [ 0.5, 0.5 ] },
-                { "name": "Strength2", "values": [ 0.0 ] }
+                { "name": "Strength", "values": [ 0.5 ] }
             ]
+        },
+        {
+            "name": "watchcraft:lcd",
+            "intarget": "minecraft:main",
+            "outtarget": "swap",
+            "use_linear_filter": true,
+            "uniforms": [
+                { "name": "LcdStrength", "values": [ 1.0 ] },
+                { "name": "LcdPitch", "values": [ 0.0 ] },
+                { "name": "LcdPhase", "values": [ 0.0 ] },
+                { "name": "LcdTime", "values": [ 0.0 ] }
+            ]
+        },
+        {
+            "name": "blit",
+            "intarget": "swap",
+            "outtarget": "minecraft:main"
         }
     ]
 }

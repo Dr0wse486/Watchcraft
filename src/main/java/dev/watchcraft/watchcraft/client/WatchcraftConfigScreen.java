@@ -183,6 +183,9 @@ public final class WatchcraftConfigScreen extends Screen {
         addDouble(WatchcraftConfig.CLIENT.chargeAimTau, "watchcraft.config.charge.aimTau", "s");
         addDouble(WatchcraftConfig.CLIENT.chargeAimGain, "watchcraft.config.charge.aimGain", "x");
         addDouble(WatchcraftConfig.CLIENT.signalMaxBlurRadius, "watchcraft.config.signal.maxBlurRadius", "px");
+        addToggle(WatchcraftConfig.CLIENT.lcdEnabled, "watchcraft.config.lcd.enabled");
+        addDouble(WatchcraftConfig.CLIENT.lcdStrength, "watchcraft.config.lcd.strength", "");
+        addDouble(WatchcraftConfig.CLIENT.lcdPixelPitch, "watchcraft.config.lcd.pixelPitch", "px");
     }
 
     private void buildRoll() {
@@ -247,6 +250,7 @@ public final class WatchcraftConfigScreen extends Screen {
         addToggle(WatchcraftConfig.CLIENT.markerShowDistance, "watchcraft.config.marker.showDistance");
         addToggle(WatchcraftConfig.CLIENT.markerEdgeIndicator, "watchcraft.config.marker.edgeIndicator");
         addInt(WatchcraftConfig.CLIENT.markerMaxLabels, "watchcraft.config.marker.maxLabels", "");
+        addToggle(WatchcraftConfig.CLIENT.markerPilotMarker, "watchcraft.config.marker.pilotMarker");
 
         addToggle(WatchcraftConfig.CLIENT.alertShowBorder, "watchcraft.config.alert.showBorder");
         addToggle(WatchcraftConfig.CLIENT.alertShowDirection, "watchcraft.config.alert.showDirection");

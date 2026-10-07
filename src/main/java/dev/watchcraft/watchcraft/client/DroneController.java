@@ -758,14 +758,6 @@ public final class DroneController {
                         new DroneActionPayload(DroneActionPayload.ACTION_DETONATE, getLinkedId()));
             }
         }
-        while (KeyMappings.FOLLOW.consumeClick()) {
-            // 跟随开关不需要连线，也不需要知道无人机在哪一架 —— 服务端自己找放飞者名下的那架。
-            // 这是这个键存在的意义：玩家在别处做别的事时也能让无人机跟上或停下。
-            if (minecraft.screen == null) {
-                PacketDistributor.sendToServer(
-                        new DroneActionPayload(DroneActionPayload.ACTION_FOLLOW, -1));
-            }
-        }
     }
 
     /**

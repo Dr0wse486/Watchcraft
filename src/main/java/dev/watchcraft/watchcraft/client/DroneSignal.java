@@ -1,15 +1,14 @@
 package dev.watchcraft.watchcraft.client;
 
-import com.google.gson.JsonSyntaxException;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.logging.LogUtils;
 import dev.watchcraft.watchcraft.entity.ReconDroneEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.PostChain;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
-
-import java.io.IOException;
+import org.slf4j.Logger;
 
 /**
  * Signal degradation, the world-space half of it.
@@ -60,6 +59,8 @@ import java.io.IOException;
  * {@code checkEntityPostEffect} reset to fight and nothing to re-assert every frame.
  */
 public final class DroneSignal {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     /**
      * Our post chain.
@@ -153,6 +154,7 @@ public final class DroneSignal {
 
         if (!piloting) {
             release();
+            DroneLcd.reset();
             // A chain that failed to build gets a fresh attempt on the next link.
             broken = false;
             return;
@@ -166,10 +168,17 @@ public final class DroneSignal {
 
         resize(minecraft);
         effect.setUniform("Radius", radiusFor(minecraft, (ReconDroneEntity) camera));
-        // 引爆瞬间的径向模糊。两条 pass 共用一条时间轴，第二遍减半，拖影才是连续的一层
-        // 而不是一条硬边。不爆炸时这里是 0，着色器直接走单次采样的直通分支。
-        effect.setUniform("Strength", DroneShake.radialBlur());
-        effect.setUniform("Strength2", DroneShake.radialBlurSecondPass());
+        // 引爆瞬间的径向模糊。两遍共用这一个全局量，各自再乘自己那条 pass 的常数
+        // （第一遍 1.0、第二遍 0.5，写在链子的 json 里），拖影才是连续的一层而不是一条硬边。
+        // 之所以要这么绕：PostChain#setUniform 是对链子里所有 pass 一起设的，没法只设一条。
+        effect.setUniform("BlurAmount", DroneShake.radialBlur());
+
+        // 液晶滤镜。它和上面的模糊走的是同一条链子、同一个挂点，所以滤的同样只是世界 ——
+        // 发光描边和整个面罩都叠在它上面，依旧是锐的。
+        effect.setUniform("LcdStrength", DroneLcd.strength());
+        effect.setUniform("LcdPitch", DroneLcd.pitch());
+        effect.setUniform("LcdPhase", DroneLcd.advance(partialTicks));
+        effect.setUniform("LcdTime", DroneLcd.time());
 
         // Exactly the sequence GameRenderer runs around its own post effect, and the rebind at the
         // end matters: without it the window framebuffer is left bound, and doEntityOutline would
@@ -190,9 +199,19 @@ public final class DroneSignal {
                     EFFECT);
             width = -1;
             height = -1;
+            LOGGER.info("Post chain {} built; the visor has signal degradation, detonation blur "
+                    + "and the LCD filter", EFFECT.getPath());
             return true;
-        } catch (IOException | JsonSyntaxException exception) {
-            // PostChain has already logged the file and the reason.
+        } catch (Exception exception) {
+            // ⚠️ 这里必须抓 Exception 而且必须自己记一笔。原来的写法是
+            // `catch (IOException | JsonSyntaxException)` 加一句"PostChain 已经记过日志了"——
+            // 两半都是错的：PostChain 只抛不记，而它抛的 ChainedJsonException **继承 IOException**，
+            // 于是任何一个配置错误都会被这里静静吞掉，链子被标成 broken，画面里什么都不会发生，
+            // 日志里一个字都没有。整整三个效果（信号劣化、引爆径向模糊、液晶滤镜）就这样消失了很久，
+            // 直到有人问"为什么滤镜没反应"才被发现。见 tools/verify_shaders.py。
+            LOGGER.error("Post chain {} failed to build; the drone visor will have no signal "
+                    + "degradation, no detonation blur and no LCD filter this session. "
+                    + "Run `python tools/verify_shaders.py` to find the offending pass.", EFFECT, exception);
             broken = true;
             effect = null;
             return false;

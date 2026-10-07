@@ -1,8 +1,10 @@
 package dev.watchcraft.watchcraft.entity;
 
+import com.mojang.logging.LogUtils;
 import dev.watchcraft.watchcraft.item.BatteryItem;
 import dev.watchcraft.watchcraft.item.DroneModules;
 import dev.watchcraft.watchcraft.item.ReconDroneItem;
+import dev.watchcraft.watchcraft.network.DroneAlertPayload;
 import dev.watchcraft.watchcraft.network.DroneScanPayload;
 import dev.watchcraft.watchcraft.registry.ModEntities;
 import dev.watchcraft.watchcraft.registry.ModSounds;
@@ -37,10 +39,9 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ExplosionDamageCalculator;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BaseContainerBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.entity.EnderChestBlockEntity;
-import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
@@ -50,13 +51,16 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -73,6 +77,8 @@ import java.util.UUID;
  * </ul>
  */
 public class ReconDroneEntity extends Entity {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     // ------------------------------------------------------------------ tuning
 
@@ -225,49 +231,38 @@ public class ReconDroneEntity extends Entity {
     public static boolean ALERT_LINE_OF_SIGHT = false;
     /** 两轮威胁扫描之间的刻数。比箱子扫描快得多 —— 怪会动。 */
     public static int ALERT_INTERVAL = 4;
+    /**
+     * 是否把「与机主或驾驶员同名的玩家」也算作自己人。
+     *
+     * <p>见 {@link #isOnOurSide(Player)}：这是给假人模组留的口子。
+     */
+    public static boolean ALERT_IGNORE_NAMESAKE = true;
 
-    // ------------------------------------------------------------------ 跟随
+    // ------------------------------------------------------------------ 模块：侦查加强
 
-    /** 放飞后是否默认进入跟随。 */
-    public static boolean FOLLOW_ENABLED = true;
     /**
-     * 跟在玩家身后的水平距离（格）。
+     * 侦查加强模块把扫描半径与扫描锥角<b>同时</b>放大的倍率。
      *
-     * <p>刻意不做成"一直在头顶"。正上方会挡住玩家抬头的视野，而且看起来不像跟随，
-     * 像被吊着 —— 目标点落在身后才有"跟着走"的感觉。
+     * <p>两个数一起放大是有意的：只放半径会得到一根很长的细管子，只放锥角会得到一大片
+     * 近处的视野，两者都不像"看得更远"。默认 1.5 倍时半径 48 → 72 格、锥角 110° → 165°，
+     * 大致等于把镜头从标准换成了广角长焦。
+     *
+     * <p>它同时也是容器标记与预警雷达的前置：那两块板子消费的是这台机体看到的东西，
+     * 装在一台近视的机身上没有意义。
      */
-    public static double FOLLOW_DISTANCE = 4.0D;
-    /** 相对玩家的高度（格）。天花板低时会自动压低，见 {@link #FOLLOW_CLEARANCE}。 */
-    public static double FOLLOW_HEIGHT = 4.0D;
+    public static double RECON_BOOST_MULTIPLIER = 1.5D;
+
+    // ------------------------------------------------------------------ 反侦察预警
+
     /**
-     * 速度控制器的增益：离目标点每远一格，速度加多少。
+     * 被无人机扫到的玩家是否收到"探测到无人机"的警告。
      *
-     * <p>这是跟随能不能跟上的关键。恒定速度是不行的 —— 无人机的手动飞行上限 0.24 格/刻
-     * 比玩家疾跑的约 0.28 还慢，匀速跟随必然被甩掉。改成距离驱动之后，靠近时慢悠悠地飘，
-     * 被拉开就加速追。
+     * <p>这是默认功能，不是可选的配件：无人机标记别人，别人也该知道自己在被标记。
+     * 开关留着只是给纯 PvE 服务器一个关掉它的口子。
      */
-    public static double FOLLOW_GAIN = 0.08D;
-    /**
-     * 跟随的最高速度（格/刻）。
-     *
-     * <p>必须高于 {@link #FLIGHT_SPEED}(0.24)，否则跟不上疾跑的玩家。0.55 约合 11 m/s，
-     * 能追上疾跑，但仍远低于 {@link #CHARGE_SPEED}(1.45)。这是平衡上的让步，不过跟随是
-     * 自动的，玩家拿不到"免费加速"。
-     */
-    public static double FOLLOW_MAX_SPEED = 0.55D;
-    /** 速度每刻朝目标值收敛的比例，0~1。跟随手感的主要旋钮。 */
-    public static double FOLLOW_ACCEL = 0.25D;
-    /**
-     * 尾随方向每刻朝玩家前进方向收敛的比例，0~1。
-     *
-     * <p>方向取"移动方向"而不是"视线方向"：取视线的话玩家一转头无人机就绕着人转，
-     * 很晕。站着不动时保持上一次的方向，所以停下来环顾四周不会让它乱跑。
-     */
-    public static double FOLLOW_TURN_SMOOTHING = 0.08D;
-    /** 离放飞者超过这个距离就直接收回（格）。这是失败检测，不是常规路径。 */
-    public static double FOLLOW_RECALL_DISTANCE = 48.0D;
-    /** 与天花板的净空（格）。玩家进洞穴时 {@link #FOLLOW_HEIGHT} 会落在岩石里。 */
-    public static double FOLLOW_CLEARANCE = 1.5D;
+    public static boolean DETECT_ALERT_ENABLED = true;
+    /** 同一个玩家最短多少刻收到一次警告。40 刻 = 2 秒，够显眼又不至于刷屏。 */
+    public static int DETECT_ALERT_INTERVAL = 40;
 
     /** Blocks per tick while piloted. Kept deliberately slow so the drone reads as a scout. */
     public static double FLIGHT_SPEED = 0.24D;
@@ -487,15 +482,6 @@ public class ReconDroneEntity extends Entity {
             SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.INT);
 
     /**
-     * 是否正在跟随放飞者。
-     *
-     * <p>同步出去有两个用处：驾驶员的客户端要在读数里显示这个状态，而
-     * {@link #lerpTo} 那一侧的判断也需要知道位置是由谁主导的。
-     */
-    private static final EntityDataAccessor<Boolean> DATA_FOLLOWING =
-            SynchedEntityData.defineId(ReconDroneEntity.class, EntityDataSerializers.BOOLEAN);
-
-    /**
      * The owner's UUID as text, empty when there is none.
      *
      * <p>Synced rather than kept in a plain field because the client has to be able to answer
@@ -544,23 +530,6 @@ public class ReconDroneEntity extends Entity {
     /** 服务端：雪花屏阶段剩余的刻数，大于 0 时机体冻结、等待销毁。 */
     private int staticTicks;
 
-    // ------------------------------------------------------------------ 跟随状态（服务端）
-
-    /**
-     * 尾随方向：一个水平单位向量，指向"玩家正在往哪边走"。
-     *
-     * <p>目标点 = 玩家位置 − 这个向量 × {@link #FOLLOW_DISTANCE}，也就是落在玩家身后。
-     * 用移动方向而不是视线方向，是为了让玩家转头看四周时无人机不跟着绕圈。
-     */
-    private Vec3 followDir = Vec3.ZERO;
-    /** 上一刻的玩家位置，用来求移动方向。 */
-    @Nullable
-    private Vec3 followAnchor;
-    /** 卡住时给目标高度加的临时偏置，让它爬过障碍。 */
-    private double followClimbBias;
-    /** 连续多少刻没走动。 */
-    private int followStuckTicks;
-
     /** Client side damage flash timer, driven by {@link #EVENT_HURT}. */
     private int hurtTime;
     /** Client side turn lean, plus last tick's value so the renderer can interpolate. */
@@ -590,6 +559,38 @@ public class ReconDroneEntity extends Entity {
     /** 最近威胁的坐标，没有威胁时为 {@code null}。 */
     @Nullable
     private BlockPos threatPos;
+    /**
+     * 最近的那个威胁是不是玩家。
+     *
+     * <p>只影响颜色：怪物橙、玩家红。分成两档而不是给每种生物一个颜色，是因为这条信息的
+     * 用途只有一个 —— 提醒放飞者"来的东西会不会跟我说话"。再多一档也没人看得懂。
+     */
+    private boolean threatIsPlayer;
+    /**
+     * 被本机扫到的玩家 -> 上一次收到警告的刻。
+     *
+     * <p>生物扫描每两刻跑一次，不记时间的话一个站在视野里的玩家每两刻就被提醒一次。
+     * 键是 UUID 而不是实体 id：玩家退出重进之后实体 id 会变，而"刚提醒过"这件事不该跟着变。
+     */
+    private final Map<UUID, Integer> alerted = new HashMap<>();
+    /**
+     * 本轮被本机标记到的玩家实体 id，随快照一起发出去。
+     *
+     * <p>和 {@link #alerted} 是两件事：那个管"提醒过没有"，这个管"现在正被看着的是谁"。
+     * 名单每轮生物扫描整体重建（两刻一次），机主与驾驶员不算 —— 前者是自己的无人机，
+     * 后者本来就有一个专属的"本体"标记。
+     *
+     * <p>发 id 不发坐标：实体在客户端本来就有，位置由客户端每帧自己投影，标记才会贴着人走
+     * 而不是跟着 200 毫秒一包的节奏跳。
+     */
+    private final List<Integer> markedPlayers = new ArrayList<>();
+    /**
+     * 这一轮扫描里"自己人"的名字：机主与驾驶员。
+     *
+     * <p>每轮扫描开头刷新一次，而不是在每个实体上现查 —— {@link #isOnOurSide(Player)} 是实体
+     * 过滤谓词，一次扫描会调它成百上千次，而查机主要走玩家列表。见那个方法的注释。
+     */
+    private final Set<String> ourNames = new HashSet<>();
     /**
      * 上一次真正发出去的内容。
      *
@@ -631,6 +632,7 @@ public class ReconDroneEntity extends Entity {
         SIGNAL_RANGE_PER_TIER = common.moduleSignalRange.get();
         SPEED_MODULE_MULTIPLIER = common.moduleSpeedMultiplier.get();
         SPEED_MODULE_SPEED = PLAYER_SPRINT_SPEED * SPEED_MODULE_MULTIPLIER;
+        RECON_BOOST_MULTIPLIER = common.moduleReconBoost.get();
 
         BATTERY_DRAIN_TICKS = common.batteryDrainTicks.get();
         RECALL_TICKS = common.batteryRecallTicks.get();
@@ -660,16 +662,10 @@ public class ReconDroneEntity extends Entity {
         ALERT_EXCLUDE_NEUTRAL = common.alertExcludeNeutral.get();
         ALERT_LINE_OF_SIGHT = common.alertLineOfSight.get();
         ALERT_INTERVAL = common.alertInterval.get();
+        ALERT_IGNORE_NAMESAKE = common.alertIgnoreNamesake.get();
 
-        FOLLOW_ENABLED = common.followEnabled.get();
-        FOLLOW_DISTANCE = common.followDistance.get();
-        FOLLOW_HEIGHT = common.followHeight.get();
-        FOLLOW_GAIN = common.followGain.get();
-        FOLLOW_MAX_SPEED = common.followMaxSpeed.get();
-        FOLLOW_ACCEL = common.followAccel.get();
-        FOLLOW_TURN_SMOOTHING = common.followTurnSmoothing.get();
-        FOLLOW_RECALL_DISTANCE = common.followRecallDistance.get();
-        FOLLOW_CLEARANCE = common.followClearance.get();
+        DETECT_ALERT_ENABLED = common.detectAlertEnabled.get();
+        DETECT_ALERT_INTERVAL = common.detectAlertInterval.get();
 
         BANK_GAIN = common.bankGain.get().floatValue();
         MAX_BANK = common.maxBank.get().floatValue();
@@ -702,7 +698,6 @@ public class ReconDroneEntity extends Entity {
         builder.define(DATA_CHARGE_PITCH, 0.0F);
         builder.define(DATA_ROLL, 0.0F);
         builder.define(DATA_STATIC_TICKS, 0);
-        builder.define(DATA_FOLLOWING, false);
         builder.define(DATA_OWNER, "");
         builder.define(DATA_BATTERY, ItemStack.EMPTY);
         builder.define(DATA_RECALL_TICKS, 0);
@@ -716,8 +711,6 @@ public class ReconDroneEntity extends Entity {
         this.setHealth(tag.contains("Health") ? tag.getFloat("Health") : MAX_HEALTH);
         // And it keeps whatever was bolted to it.
         this.setModules(tag.getInt("Modules"));
-        // 跟随状态跨存档保留：重启之后那架无人机应该接着跟，而不是悄悄停在半空。
-        this.setFollowing(tag.contains("Following") ? tag.getBoolean("Following") : FOLLOW_ENABLED);
         // The pack, with however much charge was left in it.
         if (tag.contains("Battery")) {
             ItemStack.parse(this.registryAccess(), tag.get("Battery")).ifPresent(this::setBattery);
@@ -735,7 +728,6 @@ public class ReconDroneEntity extends Entity {
         tag.putBoolean("Thrown", this.thrown);
         tag.putFloat("Health", this.getHealth());
         tag.putInt("Modules", this.getModules());
-        tag.putBoolean("Following", this.isFollowing());
         ItemStack battery = this.getBattery();
         if (!battery.isEmpty()) {
             tag.put("Battery", battery.save(this.registryAccess()));
@@ -877,6 +869,33 @@ public class ReconDroneEntity extends Entity {
      */
     public double flightSpeed() {
         return this.hasModule(DroneModules.SPEED) ? SPEED_MODULE_SPEED : FLIGHT_SPEED;
+    }
+
+    /**
+     * {@return this airframe's scan radius, in blocks}
+     *
+     * <p>Read off the synced mask like every other module bonus, so the number the server scans
+     * with and the number the HUD talks about are the same one - there is no second copy to keep
+     * in step.
+     */
+    public double scanRange() {
+        return this.hasModule(DroneModules.RECON_BOOST)
+                ? SCAN_RANGE * RECON_BOOST_MULTIPLIER
+                : SCAN_RANGE;
+    }
+
+    /** {@return this airframe's scan cone, in degrees} */
+    public double scanFov() {
+        return this.hasModule(DroneModules.RECON_BOOST)
+                ? SCAN_FOV * RECON_BOOST_MULTIPLIER
+                : SCAN_FOV;
+    }
+
+    /** {@return how far this airframe looks for containers, in blocks} */
+    public double chestRange() {
+        return this.hasModule(DroneModules.RECON_BOOST)
+                ? CHEST_RANGE * RECON_BOOST_MULTIPLIER
+                : CHEST_RANGE;
     }
 
     // ------------------------------------------------------------------ battery
@@ -1111,44 +1130,6 @@ public class ReconDroneEntity extends Entity {
     /** {@return 引爆后雪花屏还剩多少刻，0 表示一切正常} */
     public int getStaticTicks() {
         return this.entityData.get(DATA_STATIC_TICKS);
-    }
-
-    // ------------------------------------------------------------------ follow
-
-    public boolean isFollowing() {
-        return this.entityData.get(DATA_FOLLOWING);
-    }
-
-    /**
-     * 设置跟随状态。
-     *
-     * <p>关掉时把速度与方向一并清干净。不清的话下一次打开会带着上一次的残余速度起步 ——
-     * 无人机停在原地时速度本来就该是零，留着只会让它在重新跟上的第一刻窜一下。
-     */
-    public void setFollowing(boolean following) {
-        if (this.isFollowing() == following) {
-            return;
-        }
-        this.entityData.set(DATA_FOLLOWING, following);
-        if (!following) {
-            this.setDeltaMovement(Vec3.ZERO);
-            this.followAnchor = null;
-            this.followClimbBias = 0.0D;
-            this.followStuckTicks = 0;
-        }
-    }
-
-    /**
-     * 切换跟随。由服务端执行，只有放飞者能改。
-     *
-     * @return 切换后的状态；调用者不是放飞者时返回当前状态、不做改动
-     */
-    public boolean toggleFollow(Player player) {
-        if (!this.isOwnedBy(player) || this.isDetonated()) {
-            return this.isFollowing();
-        }
-        this.setFollowing(!this.isFollowing());
-        return this.isFollowing();
     }
 
     /** {@return 是否处于引爆后的雪花屏阶段} */
@@ -1433,15 +1414,9 @@ public class ReconDroneEntity extends Entity {
 
         if (this.thrown && pilot == null) {
             this.tickThrown();
-        } else if (this.isFollowing() && pilot == null) {
-            // 跟随只在没人驾驶时接管：驾驶员一接管，位置就归客户端主导了（见 handleMove），
-            // 两边同时写会互相抢。松开链路之后这里自然接着跟。
-            this.tickFollow(serverLevel);
-            // 距离超限会在里面直接收回，机体已经没了。后面的扫描与发布不必再跑。
-            if (this.isRemoved()) {
-                return;
-            }
         } else {
+            // 没人驾驶时无人机原地悬停，当一个固定哨兵。它不跟人走：位置要么归客户端主导
+            // （见 handleMove），要么就停在这儿 —— 中间没有第三种状态要维护。
             this.setDeltaMovement(Vec3.ZERO);
         }
 
@@ -1538,154 +1513,6 @@ public class ReconDroneEntity extends Entity {
         if (this.throwTicks > THROW_TICKS) {
             this.thrown = false;
             this.setDeltaMovement(Vec3.ZERO);
-        }
-    }
-
-    // ------------------------------------------------------------------ follow
-
-    /**
-     * 跟随放飞者的一刻。
-     *
-     * <p>目标点是"玩家身后 {distance} 格、上方 {height} 格"，不是正头顶。正上方会挡住玩家
-     * 抬头的视野，而且看起来不像跟随，像被吊着。
-     *
-     * <p>速度不是常数，而是<b>离目标点越远越快</b>。这一点是跟随能不能成立的前提：无人机的手动
-     * 飞行上限 0.24 格/刻比玩家疾跑的约 0.28 还慢，匀速跟随必然被甩掉。改成距离驱动之后，
-     * 在玩家身边时慢悠悠地飘，被拉开就加速追。
-     *
-     * <p>锚点是<b>放飞者</b>而不是驾驶员 —— 跟随的意义就是"玩家没坐在驾驶舱里的时候它也在飞"。
-     */
-    private void tickFollow(ServerLevel level) {
-        ServerPlayer owner = this.getOwnerPlayer(level);
-        if (owner == null) {
-            // 放飞者不在线，锚点就没了。原地悬停等着，不做任何猜测。
-            this.setDeltaMovement(Vec3.ZERO);
-            this.followAnchor = null;
-            return;
-        }
-
-        // 距离超限直接收回。这不是常规路径而是失败检测：跟随时本不该拉开距离，能拉开就说
-        // 明出了事 —— 传送、鞘翅、卡在方块里、区块边界抖动。它顺带把"传送后横穿世界"
-        // 这个原本要单独处理的情况一并挡掉了。
-        if (owner.distanceToSqr(this) > FOLLOW_RECALL_DISTANCE * FOLLOW_RECALL_DISTANCE) {
-            this.recallTo(owner);
-            return;
-        }
-
-        Vec3 ownerPos = owner.position();
-        this.updateFollowDirection(owner, ownerPos);
-
-        Vec3 target = new Vec3(
-                ownerPos.x - this.followDir.x * FOLLOW_DISTANCE,
-                this.followAltitude(level, owner) + this.followClimbBias,
-                ownerPos.z - this.followDir.z * FOLLOW_DISTANCE);
-
-        Vec3 offset = target.subtract(this.position());
-        double distance = offset.length();
-        double wanted = Math.min(distance * FOLLOW_GAIN, FOLLOW_MAX_SPEED);
-        Vec3 desired = distance < 1.0E-4D ? Vec3.ZERO : offset.scale(wanted / distance);
-
-        // 速度本身也要平滑。直接赋值会让无人机在目标点附近来回抽搐 —— 控制器一帧把速度打到
-        // 目标值，下一帧误差反向，于是抖个不停。让当前速度每刻朝目标值收敛一部分就没这问题。
-        Vec3 current = this.getDeltaMovement();
-        Vec3 step = current.add(desired.subtract(current).scale(FOLLOW_ACCEL));
-        this.setDeltaMovement(step);
-
-        Vec3 before = this.position();
-        this.move(MoverType.SELF, step);
-        this.detectFollowStall(step, before);
-        this.clampToWorld(level);
-
-        // 机头看着玩家。跟随时的朝向纯粹是观感，扫描是全向的，不依赖它。
-        Vec3 toOwner = ownerPos.add(0.0D, owner.getEyeHeight() * 0.5D, 0.0D).subtract(this.position());
-        if (toOwner.lengthSqr() > 1.0E-4D) {
-            this.setYRot(yawOf(toOwner));
-            this.setXRot(pitchOf(toOwner));
-        }
-    }
-
-    /**
-     * 更新尾随方向。
-     *
-     * <p>方向取的是玩家的<b>移动方向</b>而不是<b>视线方向</b>。取视线的话玩家一转头无人机
-     * 就绕着人转，非常晕；取移动方向则只在真的走动时才调整，站着环顾四周它待在原地。
-     *
-     * <p>收敛要慢（默认每刻 8%）。跟得太紧会让无人机在玩家左右横跳时来回甩。
-     */
-    private void updateFollowDirection(ServerPlayer owner, Vec3 ownerPos) {
-        Vec3 previous = this.followAnchor;
-        this.followAnchor = ownerPos;
-
-        if (previous != null) {
-            Vec3 move = ownerPos.subtract(previous);
-            double horizontalSqr = move.x * move.x + move.z * move.z;
-            if (horizontalSqr > 1.0E-6D) {
-                double horizontal = Math.sqrt(horizontalSqr);
-                Vec3 heading = new Vec3(move.x / horizontal, 0.0D, move.z / horizontal);
-                Vec3 blended = this.followDir.lerp(heading, FOLLOW_TURN_SMOOTHING);
-                double length = blended.length();
-                // 掉头时两个方向相反，lerp 会从零点穿过去。长度塌了就保持原方向，
-                // 等下一刻再拐 —— 否则会在这里除零，或者让方向瞬间翻面。
-                if (length > 0.01D) {
-                    this.followDir = blended.scale(1.0D / length);
-                }
-            }
-        }
-
-        if (this.followDir.lengthSqr() < 1.0E-6D) {
-            // 还没动过（刚放飞）。退而用玩家的水平朝向，至少有个合理的身后。
-            Vec3 look = owner.getLookAngle();
-            double horizontalSqr = look.x * look.x + look.z * look.z;
-            this.followDir = horizontalSqr > 1.0E-6D
-                    ? new Vec3(look.x, 0.0D, look.z).scale(1.0D / Math.sqrt(horizontalSqr))
-                    : new Vec3(0.0D, 0.0D, 1.0D);
-        }
-    }
-
-    /**
-     * {@return 目标高度}
-     *
-     * <p>不是简单的 {@code owner.y + height}：玩家走进洞穴或室内时，那个高度会落在岩石里，
-     * 无人机会一头顶进顶板。所以向上探一层，把目标压到天花板之下。
-     *
-     * <p>探的是玩家<b>正上方那一列</b>，不是无人机自己那一列 —— 目标点在玩家身后几格，
-     * 但真正决定"能不能待在那儿"的是玩家头顶的空间：无人机最终要贴着玩家飞。
-     */
-    private double followAltitude(ServerLevel level, ServerPlayer owner) {
-        double wanted = owner.getY() + FOLLOW_HEIGHT;
-        int reach = (int) Math.ceil(FOLLOW_HEIGHT + FOLLOW_CLEARANCE) + 1;
-        for (int i = 1; i <= reach; i++) {
-            BlockPos probe = BlockPos.containing(owner.getX(), owner.getY() + i, owner.getZ());
-            if (level.getBlockState(probe).isSolidRender(level, probe)) {
-                return Math.min(wanted, owner.getY() + i - FOLLOW_CLEARANCE);
-            }
-        }
-        return wanted;
-    }
-
-    /**
-     * 卡住检测与脱困。
-     *
-     * <p>无人机能飞，所以脱困不需要寻路：抬高一点，绝大多数障碍就从"挡路的墙"变成了
-     * "脚下的东西"。这比 A* 便宜几个数量级，而且够用 —— 跟随的目标始终在玩家附近，
-     * 而玩家一定站在能站立的地方，两者之间不会有真正复杂的通路问题。
-     *
-     * <p>偏置是渐进的（每刻 +0.15）且有上限（{@link #FOLLOW_HEIGHT}），所以它表现为
-     * "慢慢升起来跨过去"，而不是"弹射上去"。
-     */
-    private void detectFollowStall(Vec3 step, Vec3 before) {
-        double intended = step.length();
-        double moved = this.position().distanceTo(before);
-        if (intended > 0.02D && moved < intended * 0.5D) {
-            this.followStuckTicks++;
-        } else {
-            this.followStuckTicks = Math.max(0, this.followStuckTicks - 1);
-        }
-
-        if (this.followStuckTicks > 8) {
-            this.followClimbBias = Math.min(FOLLOW_HEIGHT, this.followClimbBias + 0.15D);
-        } else if (this.followStuckTicks == 0) {
-            this.followClimbBias = Math.max(0.0D, this.followClimbBias - 0.1D);
         }
     }
 
@@ -1787,6 +1614,8 @@ public class ReconDroneEntity extends Entity {
     private void tickCharge(ServerLevel level) {
         this.chargeTicks++;
         if (this.chargeTicks > CHARGE_MAX_TICKS) {
+            LOGGER.info("[watchcraft] charge gave up at {} - nothing in the swept box. {}",
+                    this.position(), this.describeNearestTarget(level));
             this.detonate(level, this.position());
             return;
         }
@@ -1809,6 +1638,8 @@ public class ReconDroneEntity extends Entity {
             }
         }
         if (struck != null) {
+            LOGGER.info("[watchcraft] charge struck {} at {}", struck.getName().getString(),
+                    struck.getBoundingBox().getCenter());
             this.detonate(level, struck.getBoundingBox().getCenter());
             return;
         }
@@ -1819,8 +1650,31 @@ public class ReconDroneEntity extends Entity {
         // aims it, and overwriting the rotation would throw away the very input the steering
         // arrives through.
         if (this.horizontalCollision || this.verticalCollision) {
+            // 撞地形时把"最近的合法目标有多远"一并记下来。这一行是为了分辨"命中判定没抓到"
+            // 和"客户端看到的位置和服务端不是同一个"：如果这里报的是 3 格而不是 0，
+            // 那无人机在屏幕上穿过去的那具身体，在服务端根本不在那儿。
+            LOGGER.info("[watchcraft] charge hit terrain at {} - no entity in the swept box. {}",
+                    this.position(), this.describeNearestTarget(level));
             this.detonate(level, this.position());
         }
+    }
+
+    /**
+     * {@return 附近最近的合法撞击目标及其距离}，用来在日志里区分"没抓到"和"位置对不上"。
+     *
+     * <p>只在冲刺以撞地形收场时调用一次，所以这点遍历不心疼。
+     */
+    private String describeNearestTarget(ServerLevel level) {
+        List<Entity> nearby = level.getEntitiesOfClass(Entity.class,
+                this.getBoundingBox().inflate(8.0D), this::isChargeTarget);
+        if (nearby.isEmpty()) {
+            return "no target within 8 blocks";
+        }
+        Entity nearest = nearby.stream()
+                .min(Comparator.comparingDouble(this::distanceToSqr))
+                .orElseThrow();
+        return String.format("nearest target %s at %.2f blocks",
+                nearest.getName().getString(), Math.sqrt(this.distanceToSqr(nearest)));
     }
 
     /**
@@ -1925,14 +1779,20 @@ public class ReconDroneEntity extends Entity {
         Vec3 eye = this.getEyePosition();
         Vec3 look = this.getViewVector(1.0F);
 
+        // 名单是快照，每轮整体重建：视野里没有了就该从屏幕上消失，不需要谁去删。
+        this.markedPlayers.clear();
+        this.refreshOurNames(level);
+
         // A thrown drone gets the wide sweep; a piloted one keeps the tighter cone, because the
         // pilot is aiming and marking half the compass would read as noise rather than as a find.
-        double fov = this.thrown ? THROW_SCAN_FOV : SCAN_FOV;
+        // 侦查加强模块把两个数一起放大，见 scanFov()/scanRange()。
+        double scanRange = this.scanRange();
+        double fov = this.thrown ? THROW_SCAN_FOV : this.scanFov();
         double ping = this.thrown ? THROW_PING_RADIUS : PING_RADIUS;
         double cosHalfFov = Math.cos(Math.toRadians(fov * 0.5D));
         double pingSqr = ping * ping;
 
-        AABB area = this.getBoundingBox().inflate(SCAN_RANGE);
+        AABB area = this.getBoundingBox().inflate(scanRange);
         List<LivingEntity> candidates = level.getEntitiesOfClass(LivingEntity.class, area, this::isScannable);
 
         int raycasts = 0;
@@ -1940,7 +1800,7 @@ public class ReconDroneEntity extends Entity {
             Vec3 centre = candidate.getBoundingBox().getCenter();
             Vec3 delta = centre.subtract(eye);
             double distance = delta.length();
-            if (distance < 0.5D || distance > SCAN_RANGE) {
+            if (distance < 0.5D || distance > scanRange) {
                 continue;
             }
             // Within the ping radius the angle does not matter; past it the target has to be in
@@ -1958,7 +1818,55 @@ public class ReconDroneEntity extends Entity {
             }
             this.marked.put(candidate.getId(), GLOW_DURATION);
             candidate.setGlowingTag(true);
+            // 被扫到的玩家要知道自己在被看。放在这一行而不是扫描循环之外：只有真的被标记
+            // （在锥内、通视）才算"探测到"，否则就退化成"无人机在附近"这种没用的提示。
+            if (candidate instanceof ServerPlayer victim) {
+                // 驾驶员那侧要画一个"被探测到的玩家"标记，所以名单里得把不是玩家的排除掉。
+                // 自己人（机主、驾驶员、以及他们的假人拷贝）不算。
+                if (!this.isOnOurSide(victim)) {
+                    this.markedPlayers.add(victim.getId());
+                }
+                this.warnDetected(level, victim);
+            }
         }
+    }
+
+    /**
+     * 通知被本机看到的玩家。
+     *
+     * <p>署名的人选是<b>驾驶员</b>，没人在开的时候退回<b>放飞者</b>：无人机是他们的，
+     * 告警上那个头像要能回答"这架是谁的"。
+     *
+     * <p>限流按玩家算，见 {@link #DETECT_ALERT_INTERVAL}。生物扫描每两刻跑一次，
+     * 不记时间的话站在视野里的人每两刻就被提醒一次。
+     */
+    private void warnDetected(ServerLevel level, ServerPlayer victim) {
+        if (!DETECT_ALERT_ENABLED) {
+            return;
+        }
+        // 机主不算"被发现"：自己的无人机看自己，没有警告的必要。假人拷贝同理。
+        if (this.isOnOurSide(victim)) {
+            return;
+        }
+        ServerPlayer source = this.getPilot();
+        if (source == null) {
+            source = this.getOwnerPlayer(level);
+        }
+        if (source == null || source == victim) {
+            return;
+        }
+
+        int now = this.tickCount;
+        Integer last = this.alerted.get(victim.getUUID());
+        if (last != null && now - last < DETECT_ALERT_INTERVAL) {
+            return;
+        }
+        this.alerted.put(victim.getUUID(), now);
+        // 地图会随被扫过的人数缓慢长大，顺手把早已过期的条目收掉。
+        if (this.alerted.size() > 16) {
+            this.alerted.entrySet().removeIf(entry -> now - entry.getValue() > 400);
+        }
+        PacketDistributor.sendToPlayer(victim, new DroneAlertPayload(source.getUUID().toString()));
     }
 
     private boolean isScannable(LivingEntity entity) {
@@ -1968,7 +1876,7 @@ public class ReconDroneEntity extends Entity {
         if (entity.getId() == this.getPilotId()) {
             return false;
         }
-        if (entity instanceof Player player && this.isOwnedBy(player)) {
+        if (entity instanceof Player player && this.isOnOurSide(player)) {
             return false;
         }
         return true;
@@ -2056,15 +1964,18 @@ public class ReconDroneEntity extends Entity {
      */
     private void scanChests(ServerLevel level) {
         this.chestSnapshot.clear();
-        if (!CHEST_MARKING) {
+        // 两道门：配置是服务器总闸，模块是这架机体自己有没有这块板子。少任何一道都不扫，
+        // 快照保持为空，客户端那侧自然什么都不画。
+        if (!CHEST_MARKING || !this.hasModule(DroneModules.CONTAINER_MARKER)) {
             return;
         }
 
+        double chestRange = this.chestRange();
         BlockPos centre = this.blockPosition();
         int originX = centre.getX() >> 4;
         int originZ = centre.getZ() >> 4;
-        int chunkRadius = Mth.ceil(CHEST_RANGE) >> 4;
-        double rangeSqr = CHEST_RANGE * CHEST_RANGE;
+        int chunkRadius = Mth.ceil(chestRange) >> 4;
+        double rangeSqr = chestRange * chestRange;
 
         List<BlockPos> candidates = new ArrayList<>();
         for (int dx = -chunkRadius; dx <= chunkRadius; dx++) {
@@ -2141,18 +2052,21 @@ public class ReconDroneEntity extends Entity {
     /**
      * {@return 这个方块实体算不算"要被标记的容器"}
      *
-     * <p>三种：箱子（含陷阱箱）、末影箱、潜影盒。
+     * <p>两类：带界面的容器（{@code BaseContainerBlockEntity} 底下的一整族 —— 箱子、陷阱箱、
+     * 木桶、潜影盒、漏斗、发射器、投掷器、合成器、熔炉三件套、酿造台）和末影箱。
      *
-     * <p><b>不能只判 {@code ChestBlockEntity}。</b>末影箱与潜影盒都不是它的子类 ——
-     * 末影箱直接继承 {@code BlockEntity}（它没有可共享的容器界面，是按玩家区分的），
-     * 潜影盒继承 {@code RandomizableContainerBlockEntity}。所以必须逐个点名。
+     * <p><b>不能只判 {@code ChestBlockEntity}。</b>木桶、潜影盒、漏斗都不是它的子类。用
+     * {@code BaseContainerBlockEntity} 一次覆盖整族，是因为"容器"这个词在玩家嘴里本来就指
+     * 所有能打开放东西的方块 —— 唯独漏掉木桶最说不过去，它和箱子是同一件东西的两个皮肤。
      *
-     * <p>想再放宽（木桶、熔炉、漏斗等）就在这一句上加类型，它们是同一个基类下的兄弟。
+     * <p>末影箱必须单独点名：它直接继承 {@code BlockEntity}，没有可共享的容器界面
+     * （内容是按玩家区分的），所以不在那一族里。
+     *
+     * <p>想再放宽（装饰陶罐之类只存一件的）就在这一句上加类型。
      */
     private static boolean isMarkableContainer(BlockEntity entity) {
-        return entity instanceof ChestBlockEntity
-                || entity instanceof EnderChestBlockEntity
-                || entity instanceof ShulkerBoxBlockEntity;
+        return entity instanceof BaseContainerBlockEntity
+                || entity instanceof EnderChestBlockEntity;
     }
 
     /**
@@ -2248,9 +2162,13 @@ public class ReconDroneEntity extends Entity {
     private void scanThreats(ServerLevel level) {
         this.threatPercent = DroneScanPayload.NO_THREAT;
         this.threatPos = null;
-        if (!ALERT_ENABLED) {
+        this.threatIsPlayer = false;
+        // 同样两道门：配置是服务器总闸，模块决定这架机体有没有雷达。
+        if (!ALERT_ENABLED || !this.hasModule(DroneModules.ALERT_RADAR)) {
             return;
         }
+        // isRivalPlayer 要用到"自己人"的名单，得在候选集查出来之前刷好。
+        this.refreshOurNames(level);
         ServerPlayer owner = this.getOwnerPlayer(level);
         if (owner == null) {
             return;
@@ -2258,7 +2176,8 @@ public class ReconDroneEntity extends Entity {
 
         double rangeSqr = ALERT_RANGE * ALERT_RANGE;
         List<LivingEntity> candidates = level.getEntitiesOfClass(LivingEntity.class,
-                owner.getBoundingBox().inflate(ALERT_RANGE), this::isThreat);
+                owner.getBoundingBox().inflate(ALERT_RANGE),
+                entity -> this.isThreat(entity) || this.isRivalPlayer(entity));
 
         Vec3 eye = this.getEyePosition();
         LivingEntity nearest = null;
@@ -2295,6 +2214,46 @@ public class ReconDroneEntity extends Entity {
         }
         this.threatPercent = percent;
         this.threatPos = nearest.blockPosition();
+        // 颜色只看这一位：怪物橙、玩家红。分级而不是逐种配色，是因为这条信息的用途只有
+        // 一个 —— 提醒放飞者"来的东西会不会跟我说话"。
+        this.threatIsPlayer = nearest instanceof Player;
+    }
+
+    /**
+     * {@return 这个玩家算不算"我们这边的人"}
+     *
+     * <p>三条判据，按可靠性从高到低：机主 UUID、驾驶员实体 id、**与机主或驾驶员同名的玩家**。
+     *
+     * <p>前两条一直都有，第三条是给假人（fake player）模组补的。假人是<b>另一个真正的
+     * Player 实体</b>：UUID 和本体不同，所以 {@link #isOwnedBy(Player)} 拦不住它；实体 id
+     * 也不同，所以驾驶员那一条也拦不住它。它唯一和本体一致的是<b>名字和皮肤</b> —— 那本来
+     * 就是它的全部意义。于是无人机会把自己操作者的复制品当成陌生玩家报红，屏幕上凭空多出
+     * 一个"敌人"。
+     *
+     * <p>同名是服务端唯一拿得到的"这是同一个人"的证据，所以这里用它。代价写进了
+     * {@link #ALERT_IGNORE_NAMESAKE} 的注释里：离线服务器上两个重名玩家会互相看不见。
+     *
+     * <p>名单在每轮扫描开头由 {@link #refreshOurNames(ServerLevel)} 刷一次，不是现查 ——
+     * 这个方法一次扫描要被调成百上千次。
+     */
+    private boolean isOnOurSide(Player player) {
+        if (this.isOwnedBy(player) || player.getId() == this.getPilotId()) {
+            return true;
+        }
+        return ALERT_IGNORE_NAMESAKE && this.ourNames.contains(player.getGameProfile().getName());
+    }
+
+    /** 刷新 {@link #ourNames}。每轮生物扫描与威胁扫描开头各调一次。 */
+    private void refreshOurNames(ServerLevel level) {
+        this.ourNames.clear();
+        ServerPlayer owner = this.getOwnerPlayer(level);
+        if (owner != null) {
+            this.ourNames.add(owner.getGameProfile().getName());
+        }
+        ServerPlayer pilot = this.getPilot();
+        if (pilot != null) {
+            this.ourNames.add(pilot.getGameProfile().getName());
+        }
     }
 
     /**
@@ -2312,6 +2271,20 @@ public class ReconDroneEntity extends Entity {
             return false;
         }
         return !ALERT_EXCLUDE_NEUTRAL || !(entity instanceof NeutralMob);
+    }
+
+    /**
+     * {@return 这个生物是不是"别人的玩家"}
+     *
+     * <p>玩家在雷达上单独分一档（红色），因为"来的东西会不会跟我说话"和"来了一只怪"是两件
+     * 事。机主自己不算 —— 预警要保护的就是他；驾驶员也不算，那是"我们这边"的人。
+     */
+    private boolean isRivalPlayer(LivingEntity entity) {
+        if (!(entity instanceof Player player)) {
+            return false;
+        }
+        return player.isAlive() && !player.isRemoved() && !player.isSpectator()
+                && !this.isOnOurSide(player);
     }
 
     /** {@return 放飞者，不在线时为 {@code null}} */
@@ -2341,10 +2314,9 @@ public class ReconDroneEntity extends Entity {
         DroneScanPayload payload = new DroneScanPayload(
                 List.copyOf(this.chestSnapshot),
                 this.threatPercent,
-                this.threatPos == null ? 0 : this.threatPos.getX(),
-                this.threatPos == null ? 0 : this.threatPos.getY(),
-                this.threatPos == null ? 0 : this.threatPos.getZ(),
-                this.isFollowing());
+                this.threatPos == null ? BlockPos.ZERO : this.threatPos,
+                this.threatIsPlayer,
+                List.copyOf(this.markedPlayers));
         if (payload.equals(this.lastPublished)) {
             return;
         }
@@ -2360,8 +2332,10 @@ public class ReconDroneEntity extends Entity {
      */
     private void publishEmptyScan() {
         this.chestSnapshot.clear();
+        this.markedPlayers.clear();
         this.threatPercent = DroneScanPayload.NO_THREAT;
         this.threatPos = null;
+        this.threatIsPlayer = false;
         this.lastPublished = null;
         if (!(this.level() instanceof ServerLevel level)) {
             return;
@@ -2398,13 +2372,35 @@ public class ReconDroneEntity extends Entity {
         }
         // 手里拿着电池就是装/拆，否则才是把整架收进背包。两件事都消耗这次交互，
         // 所以客户端那个 SUCCESS 对两种情况都成立 —— 见上面关于返回值的注释。
-        ItemStack held = player.getItemInHand(hand);
-        if (held.getItem() instanceof BatteryItem) {
-            this.toggleBattery(player, held);
-        } else {
+        //
+        // ⚠️ **两只手都要看。** 原版 startUseItem 是「先用主手试一遍交互，消耗了就直接
+        // return」，所以主手空着而电池在副手时，这里如果只看 hand 参数就会走成回收整机 ——
+        // 玩家明明"手持电池"，无人机却被收走了。物品那条路径（ReconDroneItem#use）从一开始
+        // 就查的是"另一只手"，实体这条路径漏了，两边不一致。
+        ItemStack held = batteryInEitherHand(player, hand);
+        if (held.isEmpty()) {
             this.pickUp(player);
+        } else {
+            this.toggleBattery(player, held);
         }
         return InteractionResult.CONSUME;
+    }
+
+    /**
+     * {@return 用于装拆的那块电池}，优先看正在交互的那只手，其次是另一只。
+     *
+     * <p>都没有就返回空栈 —— 调用方据此判断这次交互是"收整机"。
+     */
+    private static ItemStack batteryInEitherHand(Player player, InteractionHand hand) {
+        ItemStack used = player.getItemInHand(hand);
+        if (used.getItem() instanceof BatteryItem) {
+            return used;
+        }
+        InteractionHand other = hand == InteractionHand.MAIN_HAND
+                ? InteractionHand.OFF_HAND
+                : InteractionHand.MAIN_HAND;
+        ItemStack alternative = player.getItemInHand(other);
+        return alternative.getItem() instanceof BatteryItem ? alternative : ItemStack.EMPTY;
     }
 
     /**
@@ -2458,6 +2454,7 @@ public class ReconDroneEntity extends Entity {
         // 它生前看到的东西 —— 而箱子快照是"发出去就完了"，不像发光那样有实体状态要还回去，
         // 所以唯一的清理动作就是把空快照推给客户端。
         this.publishEmptyScan();
+        this.alerted.clear();
         if (!(this.level() instanceof ServerLevel serverLevel)) {
             this.marked.clear();
             return;
@@ -2491,9 +2488,6 @@ public class ReconDroneEntity extends Entity {
         drone.moveTo(spawn.x, spawn.y, spawn.z, player.getYRot(), player.getXRot());
         drone.setOwner(player);
         drone.setModules(DroneModules.of(stack));
-        // 放飞即进入跟随。这正是"不用坐进驾驶舱也能享受标记"这条需求的默认形态：
-        // 扔出去之后什么都不用管，它自己跟上来、自己侦察。
-        drone.setFollowing(FOLLOW_ENABLED);
         drone.setBattery(ReconDroneItem.batteryOf(stack));
         drone.setDeltaMovement(look.scale(THROW_SPEED).add(0.0D, 0.06D, 0.0D));
         drone.markThrown();

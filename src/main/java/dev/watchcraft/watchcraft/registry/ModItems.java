@@ -62,6 +62,29 @@ public final class ModItems {
                     DroneModules.SPEED, DroneModules.CUSTOMIZATION));
 
     /**
+     * Recon package: the board that makes the drone's sensors worth something.
+     *
+     * <p>It is a gate rather than a plain stat stick - without it the container scanner and the
+     * radar refuse to seat - but it also widens the cone and the reach on its own, so fitting it
+     * is useful before either of its dependants exists.
+     */
+    public static final DeferredItem<DroneModuleItem> RECON_BOOST_MODULE = ITEMS.register("recon_boost_module",
+            () -> new DroneModuleItem(new Item.Properties().stacksTo(16),
+                    DroneModules.RECON_BOOST, DroneModules.CUSTOMIZATION));
+
+    /** Container scanner: chests, barrels and the like, marked on the owner's screen. */
+    public static final DeferredItem<DroneModuleItem> CONTAINER_MARKER_MODULE = ITEMS.register("container_marker_module",
+            () -> new DroneModuleItem(new Item.Properties().stacksTo(16),
+                    DroneModules.CONTAINER_MARKER,
+                    DroneModules.CUSTOMIZATION | DroneModules.RECON_BOOST));
+
+    /** Radar: hostiles show amber, players red. */
+    public static final DeferredItem<DroneModuleItem> ALERT_RADAR_MODULE = ITEMS.register("alert_radar_module",
+            () -> new DroneModuleItem(new Item.Properties().stacksTo(16),
+                    DroneModules.ALERT_RADAR,
+                    DroneModules.CUSTOMIZATION | DroneModules.RECON_BOOST));
+
+    /**
      * The cheap pack: a quarter of a full charge, so a quarter of the flight time.
      *
      * <p>Stackable while fresh - an absent charge component is what makes that work, since two
